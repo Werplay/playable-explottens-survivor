@@ -8,8 +8,8 @@ import type { GameScene } from './GameScene';
 const D = { hud: 100, overlay: 200, cue: 300 };
 /** How far a card that cannot be taken is faded back. */
 const LOCKED_ALPHA = 0.42;
-/** One store badge, at the size the pair is laid out from. */
-const BADGE = { w: 168, h: 52 };
+/** Badge height at ui 1; the official artwork's own aspect sets each width. */
+const BADGE = { h: 52, gap: 12 };
 const GOLD = '#ffd34d';
 
 /** Colours read off the in-game "Select a Skill" panel. Weapons glow green, passives
@@ -51,6 +51,15 @@ export class Hud {
    *  each of these carries the inverse - see GameScene.pinTo. */
   private screens: Phaser.GameObjects.Container[] = [];
 
+  /** Canvas scale for the run HUD. 1 on a 400px short side, which is what all the
+   *  numbers below were authored against, so the HUD keeps the same share of the screen
+   *  on a 280px phone and on a 1280px tablet rather than being drawn at a fixed pixel
+   *  size - cramped and overlapping on one, a lost strip in the corner on the other. */
+  private ui = 1;
+  /** Every HUD label, so a resize can re-render them at the new size rather than
+   *  scaling a bitmap up and going soft. */
+  private texts: Phaser.GameObjects.Text[] = [];
+
   private root!: Phaser.GameObjects.Container;
   private xpBg!: Phaser.GameObjects.Rectangle;
   private xpFill!: Phaser.GameObjects.Rectangle;
@@ -66,6 +75,10 @@ export class Hud {
   private xpShine!: Phaser.GameObjects.Rectangle;
   private heart!: Phaser.GameObjects.Graphics;
   private xpGem!: Phaser.GameObjects.Image;
+  /** bottom edge of the bar slab, in canvas px - everything below it stacks from here */
+  private barsBottom = 70;
+  /** bottom edge of the whole run HUD (bars, badge, stats), for the panel to clear */
+  private hudBottom = 110;
   private loadout!: Phaser.GameObjects.Container;
 
   private intro!: Phaser.GameObjects.Container;
@@ -76,6 +89,15 @@ export class Hud {
   private cue!: Phaser.GameObjects.Container;
   private cueText!: Phaser.GameObjects.Text;
   private cueBg!: Phaser.GameObjects.Graphics;
+  private cueMsg = '';
+  /** Whether a beat cue owns the screen. Read rather than `cue.alpha`, which is still 0
+   *  on the frame its fade-in starts - the frame the level-up panel lays itself out on,
+   *  which left the panel sizing its heading band for a header that was about to be
+   *  replaced, and the hint landing on the first card. */
+  private cueOn = false;
+  private cueSize!: Phaser.GameObjects.Rectangle;
+  /** the cue panel's drawn height in canvas px - what the layout stacks against */
+  private cueH = 40;
   /** brief 1: the tap cue that rides on the player until the first swipe */
   private finger!: Phaser.GameObjects.Container;
   /** brief 3: the ring drawn round the XP bar and the ability menu while they matter */
@@ -90,6 +112,27 @@ export class Hud {
   }
 
   // ------------------------------------------------------------------ build
+  /** A HUD label that remembers the size it was authored at, so `restyle` can put it
+   *  back at `base * ui` whenever the canvas changes. */
+  private mkText(size: number, str: string, color = '#ffffff') {
+    const t = this.s.add.text(0, 0, str, this.label(size, color));
+    t.setData('base', size);
+    this.texts.push(t);
+    this.restyleOne(t);
+    return t;
+  }
+
+  private restyleOne(t: Phaser.GameObjects.Text) {
+    const px = Math.max(8, Math.round(((t.getData('base') as number) || 16) * this.ui));
+    t.setFontSize(px);
+    t.setStroke('#16283d', Math.max(3, px * 0.16));
+  }
+
+  private restyle() {
+    this.texts = this.texts.filter((t) => t.scene);
+    for (const t of this.texts) this.restyleOne(t);
+  }
+
   private label(size: number, color = '#ffffff') {
     return {
       fontFamily: FONT,
@@ -120,7 +163,7 @@ export class Hud {
     this.xpGem = s.add.image(0, 0, 'gem_green').setScale(0.62);
 
     this.portrait = s.add.image(0, 0, 'hud_portrait');
-    this.lvlText = s.add.text(0, 0, '1', this.label(21)).setOrigin(0.5);
+    this.lvlText = this.mkText(21, '1').setOrigin(0.5);
 
     this.root.add([
       this.plate,
@@ -138,7 +181,7 @@ export class Hud {
 
     for (const key of ['hud_time', 'hud_kills', 'hud_wave']) {
       const icon = s.add.image(0, 0, key).setScale(0.5).setOrigin(0.5);
-      const label = s.add.text(0, 0, '0', this.label(20)).setOrigin(0, 0.5);
+      const label = this.mkText(20, '0').setOrigin(0, 0.5);
       this.stats.push({ icon, label });
       this.root.add([icon, label]);
     }
@@ -146,13 +189,14 @@ export class Hud {
     this.loadout = s.add.container(0, 0);
     this.root.add(this.loadout);
 
-    this.bannerText = s.add.text(0, 0, '', this.label(30, '#ff6b6b')).setOrigin(0.5).setAlpha(0);
+    this.bannerText = this.mkText(30, '', '#ff6b6b').setOrigin(0.5).setAlpha(0);
     this.root.add(this.bannerText);
 
     const bossBg = s.add.rectangle(0, 0, 260, 18, 0x0d2136, 0.8).setOrigin(0.5);
     bossBg.setStrokeStyle(3, 0xff6b6b);
     this.bossFill = s.add.rectangle(-128, 0, 256, 14, 0xff4438).setOrigin(0, 0.5);
-    const bossName = s.add.text(0, -22, 'BOSS', this.label(18, '#ff9a8f')).setOrigin(0.5);
+    const bossName = this.mkText(18, 'BOSS', '#ff9a8f').setOrigin(0.5);
+    bossName.setPosition(0, -22);
     this.bossBar = s.add.container(0, 0, [bossBg, this.bossFill, bossName]).setVisible(false);
     this.root.add(this.bossBar);
 
@@ -161,8 +205,8 @@ export class Hud {
     this.root.add(this.xpGlow);
 
     // brief 1: the text overlay, and the finger that taps on the player himself
-    const title = s.add.text(0, 0, BEATS.intro.overlay, this.label(30, GOLD)).setOrigin(0.5);
-    const sub = s.add.text(0, 40, BEATS.intro.hint, this.label(19)).setOrigin(0.5);
+    const title = this.mkText(30, BEATS.intro.overlay, GOLD).setOrigin(0.5);
+    const sub = this.mkText(19, BEATS.intro.hint).setOrigin(0.5);
     s.tweens.add({ targets: title, scale: 1.06, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.intro = s.add.container(0, 0, [title, sub]).setScrollFactor(0).setDepth(D.overlay);
 
@@ -175,8 +219,16 @@ export class Hud {
 
     // the beat's line of copy - above the level-up panel, since it explains it
     this.cueBg = s.add.graphics();
-    this.cueText = s.add.text(0, 0, '', this.label(21, '#ffffff')).setOrigin(0.5);
-    this.cue = s.add.container(0, 0, [this.cueBg, this.cueText]).setScrollFactor(0).setDepth(D.cue).setAlpha(0);
+    // Phaser cannot measure a Graphics, so a Container holding one reports nonsense
+    // bounds - which is what put this cue on top of the first upgrade card. This
+    // zero-alpha rectangle is the panel's real size, for anything that asks.
+    this.cueSize = s.add.rectangle(0, 0, 10, 10, 0x000000, 0).setOrigin(0.5);
+    this.cueText = this.mkText(21, '', '#ffffff').setOrigin(0.5);
+    this.cue = s.add
+      .container(0, 0, [this.cueBg, this.cueSize, this.cueText])
+      .setScrollFactor(0)
+      .setDepth(D.cue)
+      .setAlpha(0);
 
     this.pinScreen(this.root);
     this.pinScreen(this.intro);
@@ -193,19 +245,31 @@ export class Hud {
   /** Brief note 4: a cue lives until its action is done, then fades - never lingers. */
   private say(text: string) {
     const s = this.s;
-    this.cueText.setScale(1).setText(text);
-    this.fit(this.cueText, 52);
-    const w = this.cueText.width * this.cueText.scaleX + 44;
-    const h = this.cueText.height * this.cueText.scaleY + 22;
-    this.cueBg.clear();
-    this.cueBg.fillStyle(0x0d2136, 0.86).fillRoundedRect(-w / 2, -h / 2, w, h, 12);
-    this.cueBg.lineStyle(3, 0xffc93c, 0.9).strokeRoundedRect(-w / 2, -h / 2, w, h, 12);
+    this.cueOn = true;
+    this.cueMsg = text;
+    this.drawCue();
     s.tweens.killTweensOf(this.cue);
     this.cue.setScale(0.9);
     s.tweens.add({ targets: this.cue, alpha: 1, scale: 1, duration: 220, ease: 'Back.easeOut' });
   }
 
+  /** The cue's panel is drawn around its text, so it has to be redrawn whenever either
+   *  the copy or the canvas changes. */
+  private drawCue() {
+    const u = this.ui;
+    this.cueText.setScale(1).setText(this.cueMsg);
+    this.fit(this.cueText, 74 * u);
+    const w = this.cueText.width * this.cueText.scaleX + 44 * u;
+    const h = this.cueText.height * this.cueText.scaleY + 22 * u;
+    this.cueBg.clear();
+    this.cueBg.fillStyle(0x0d2136, 0.86).fillRoundedRect(-w / 2, -h / 2, w, h, 12 * u);
+    this.cueBg.lineStyle(3 * u, 0xffc93c, 0.9).strokeRoundedRect(-w / 2, -h / 2, w, h, 12 * u);
+    this.cueSize.setSize(w, h);
+    this.cueH = h;
+  }
+
   private hush() {
+    this.cueOn = false;
     this.s.tweens.add({ targets: this.cue, alpha: 0, duration: 250 });
   }
 
@@ -306,19 +370,35 @@ export class Hud {
     const list = this.s.ownedList();
     while (this.loadout.length < list.length * 3) {
       const i = this.loadout.length / 3;
-      const bg = this.s.add.rectangle(i * 44, 0, 38, 38, 0x0d2136, 0.66).setOrigin(0, 0);
-      const icon = this.s.add.image(i * 44 + 19, 19, list[i].def.icon).setScale(0.41);
-      const pip = this.s.add.text(i * 44 + 34, 26, '1', this.label(14, GOLD)).setOrigin(0.5);
+      const bg = this.s.add.rectangle(0, 0, 38, 38, 0x0d2136, 0.66).setOrigin(0, 0);
+      const icon = this.s.add.image(0, 0, list[i].def.icon);
+      const pip = this.mkText(14, '1', GOLD).setOrigin(0.5);
       this.loadout.add([bg, icon, pip]);
       pin(bg);
       pin(icon);
       pin(pip);
     }
+    this.layoutLoadout();
     for (let i = 0; i < list.length; i++) {
       const icon = this.loadout.getAt(i * 3 + 1) as Phaser.GameObjects.Image;
       const pip = this.loadout.getAt(i * 3 + 2) as Phaser.GameObjects.Text;
       icon.setTexture(list[i].def.icon);
       pip.setText(`${list[i].level}`);
+    }
+  }
+
+  /** Slot size and spacing follow the canvas like everything else in the HUD. */
+  private layoutLoadout() {
+    const u = this.ui;
+    const box = 38 * u;
+    const step = 44 * u;
+    for (let i = 0; i * 3 < this.loadout.length; i++) {
+      const bg = this.loadout.getAt(i * 3) as Phaser.GameObjects.Rectangle;
+      const icon = this.loadout.getAt(i * 3 + 1) as Phaser.GameObjects.Image;
+      const pip = this.loadout.getAt(i * 3 + 2) as Phaser.GameObjects.Text;
+      bg.setPosition(i * step, 0).setSize(box, box);
+      icon.setPosition(i * step + box / 2, box / 2).setScale(0.41 * u);
+      pip.setPosition(i * step + box * 0.89, box * 0.68);
     }
   }
 
@@ -328,6 +408,10 @@ export class Hud {
     const c = this.pinScreen(s.add.container(0, 0).setScrollFactor(0).setDepth(D.overlay));
     const dim = s.add.rectangle(0, 0, this.w, this.h, 0x04101d, 0.82).setOrigin(0);
     const header = this.makeHeader();
+    // Beats 4 and 5 put their own line of copy over this panel, which says the same
+    // thing as "SELECT A SKILL" only better - two headings stacked is the clutter, and
+    // on a short screen they land on each other.
+    header.setVisible(!this.cueOn);
     const refresh = this.makeRefresh();
     c.add([dim, header, refresh]);
 
@@ -535,37 +619,38 @@ export class Hud {
   /** The player HUD the game draws: the portrait sunk into the left end of a red slab,
    *  the level on its rim, and health over XP in two troughs cut out of it. */
   private layoutBars(width: number, pad: number) {
-    const d = 62; // portrait diameter
+    const u = this.ui;
+    const d = 62 * u; // portrait diameter
     const cx = pad + d / 2;
-    const cy = 46;
-    const x0 = cx + d / 2 - 6; // the slab runs out from under the portrait
+    const cy = 46 * u;
+    const x0 = cx + d / 2 - 6 * u; // the slab runs out from under the portrait
     const x1 = width - pad;
-    const top = cy - 23;
-    const h = 46;
-    const barX = x0 + 22; // clear of the cap icons
-    const barW = Math.max(10, x1 - 10 - barX);
-    const hpY = cy - 10;
-    const xpY = cy + 11;
+    const top = cy - 23 * u;
+    const h = 46 * u;
+    const barX = x0 + 22 * u; // clear of the cap icons
+    const barW = Math.max(10, x1 - 10 * u - barX);
+    const hpY = cy - 10 * u;
+    const xpY = cy + 11 * u;
 
     this.plate.clear();
-    this.plate.fillStyle(HUD.plate, 1).fillRoundedRect(x0, top, x1 - x0, h, 11);
-    this.plate.lineStyle(3, HUD.plateRim, 1).strokeRoundedRect(x0, top, x1 - x0, h, 11);
+    this.plate.fillStyle(HUD.plate, 1).fillRoundedRect(x0, top, x1 - x0, h, 11 * u);
+    this.plate.lineStyle(3 * u, HUD.plateRim, 1).strokeRoundedRect(x0, top, x1 - x0, h, 11 * u);
 
     for (const [y, bg, fill, shine] of [
       [hpY, this.hpBg, this.hpFill, this.hpShine],
       [xpY, this.xpBg, this.xpFill, this.xpShine]
     ] as [number, Phaser.GameObjects.Rectangle, Phaser.GameObjects.Rectangle, Phaser.GameObjects.Rectangle][]) {
-      bg.setPosition(barX, y).setSize(barW, 13);
-      fill.setPosition(barX, y).setSize(barW, 13);
-      shine.setPosition(barX + 3, y - 3).setSize(barW, 4);
+      bg.setPosition(barX, y).setSize(barW, 13 * u);
+      fill.setPosition(barX, y).setSize(barW, 13 * u);
+      shine.setPosition(barX + 3 * u, y - 3 * u).setSize(barW, 4 * u);
     }
 
     // a heart at the health cap, the game's XP gem at the other
-    const hx = barX - 11;
+    const hx = barX - 11 * u;
     this.heart.clear();
-    const r = 5.5;
+    const r = 5.5 * u;
     for (const [col, off] of [
-      [HUD.heartShade, 1.5],
+      [HUD.heartShade, 1.5 * u],
       [HUD.heart, 0]
     ] as [number, number][]) {
       this.heart.fillStyle(col, 1);
@@ -573,88 +658,42 @@ export class Hud {
       this.heart.fillCircle(hx + r * 0.52, hpY - r * 0.42 + off, r * 0.74);
       this.heart.fillTriangle(hx - r * 1.12, hpY - r * 0.16 + off, hx + r * 1.12, hpY - r * 0.16 + off, hx, hpY + r * 1.18 + off);
     }
-    this.xpGem.setPosition(hx, xpY);
+    this.xpGem.setPosition(hx, xpY).setScale(0.62 * u);
 
     this.portrait.setPosition(cx, cy).setDisplaySize(d, d);
-    this.lvlText.setPosition(cx, cy + d / 2 - 7);
+    this.lvlText.setPosition(cx, cy + d / 2 - 7 * u);
+    // What the rest of the HUD hangs below. The level badge sits on the portrait's rim
+    // and hangs past the slab, so it - not the slab - is the real bottom edge.
+    this.barsBottom = Math.max(top + h, this.lvlText.y + this.lvlText.height / 2);
   }
 
-  /** A store badge: the black pill, the store's mark, and its two lines of type.
-   *
-   *  NOTE: the marks here are drawn stand-ins. Google and Apple both require their own
-   *  supplied badge artwork, used unmodified, so before this ships the two glyphs should
-   *  be swapped for the official files - drop them in as `badge_google` / `badge_apple`
-   *  images and this method becomes one `s.add.image` each. */
-  private makeStoreBadge(kind: 'google' | 'apple') {
+  /** A store badge: the official artwork, drawn to a common height so the pair sits on
+   *  one line, and hit-tested over its own rectangle. Both badges do the same thing -
+   *  hand off to the network's install call. */
+  private makeStoreBadge(key: 'playstore' | 'appstore') {
     const s = this.s;
-    const w = BADGE.w;
-    const h = BADGE.h;
-    const g = s.add.graphics();
-    g.fillStyle(0x000000, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 9);
-    g.lineStyle(1.5, 0xa6a6a6, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 9);
-
-    const gx = -w / 2 + 20;
-    const mark = s.add.graphics();
-    if (kind === 'google') {
-      // the play triangle: a right-pointing wedge quartered about its fold
-      const r = 13;
-      const ax = gx - r * 0.52;
-      const top = -r;
-      const bot = r;
-      const mid = 0;
-      const tip = gx + r * 0.72;
-      const fold = gx + r * 0.12;
-      const tri = (col: number, pts: number[][]) => {
-        mark.fillStyle(col, 1).fillTriangle(pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1]);
-      };
-      tri(0x00a0ff, [[ax, top], [ax, mid], [fold, mid]]);
-      tri(0x00e676, [[ax, mid], [ax, bot], [fold, mid]]);
-      tri(0xffce00, [[ax, top], [tip, mid], [fold, mid]]);
-      tri(0xff3a44, [[ax, bot], [tip, mid], [fold, mid]]);
-    } else {
-      // the apple: a rounded body with a bite out of its right side, and a leaf
-      mark.fillStyle(0xffffff, 1);
-      mark.fillCircle(gx - 4.5, 1, 8.5);
-      mark.fillCircle(gx + 4.5, 1, 8.5);
-      mark.fillRect(gx - 9, -3, 18, 11);
-      mark.fillCircle(gx - 3.5, 7, 6.5);
-      mark.fillCircle(gx + 3.5, 7, 6.5);
-      mark.fillStyle(0x000000, 1).fillCircle(gx + 13, -7, 7); // the bite
-      mark.fillStyle(0xffffff, 1);
-      mark.fillEllipse(gx + 2.5, -10.5, 5, 8); // the leaf
-    }
-
-    const tx = gx + 20;
-    const small = s.add
-      .text(tx, -h * 0.2, kind === 'google' ? 'GET IT ON' : 'Download on the', {
-        fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '11px',
-        color: '#ffffff'
-      })
-      .setOrigin(0, 0.5);
-    const big = s.add
-      .text(tx - 1, h * 0.19, kind === 'google' ? 'Google Play' : 'App Store', {
-        fontFamily: 'Arial, Helvetica, sans-serif',
-        fontSize: '21px',
-        color: '#ffffff'
-      })
-      .setOrigin(0, 0.5);
-
-    const hit = s.add.rectangle(0, 0, w, h, 0x000000, 0).setOrigin(0.5);
+    const img = s.add.image(0, 0, key).setOrigin(0.5);
+    const hit = s.add.rectangle(0, 0, img.width, img.height, 0x000000, 0).setOrigin(0.5);
     hit.setInteractive({ useHandCursor: true }).on('pointerdown', () => sdk.install());
-    return s.add.container(0, 0, [g, mark, small, big, hit]);
+    return s.add.container(0, 0, [img, hit]);
   }
 
-  /** Header tucks in on a short screen so three cards still fit under it. */
-  private headerY() {
-    return Phaser.Math.Clamp(this.h * 0.14, 40, 110);
+  /** Top of the panel's own stack: under the run HUD, never on it. */
+  private panelTop() {
+    return Math.max(Phaser.Math.Clamp(this.h * 0.12, 30, 110), this.hudBottom + 10 * this.ui);
   }
 
-  /** Uniform scale that fits the card to the width and the stack to the height. */
+  /** Height of the heading band - the beat cue when one is up, otherwise the rule. */
+  private headBand() {
+    return this.cueOn ? this.cueH + 16 * this.ui : 46 * this.ui;
+  }
+
+  /** Uniform scale that fits the card to the width and the stack to what is left of the
+   *  height once the HUD, the heading band and Refresh have taken their share. */
   private cardScale() {
-    const room = this.h - this.headerY() - 40 - 96; // header rule above, Refresh below
-    const perCard = (room - 2 * CARD.gap) / 3;
-    return Phaser.Math.Clamp(Math.min((this.w - 32) / CARD.w, perCard / CARD.h), 0.35, 1);
+    const room = this.h - this.panelTop() - this.headBand() - 96 * this.ui;
+    const perCard = (room - 2 * CARD.gap * this.ui) / 3;
+    return Phaser.Math.Clamp(Math.min((this.w - 32) / CARD.w, perCard / CARD.h), 0.3, 1);
   }
 
   private layoutOverlay(header: Phaser.GameObjects.Container, refresh: Phaser.GameObjects.Container) {
@@ -666,16 +705,27 @@ export class Hud {
     const cardH = CARD.h * k;
     const gap = CARD.gap * k;
     const span = 3 * cardH + 2 * gap;
-    const headerY = this.headerY();
-    const top = headerY + 40 * k;
+
+    // One vertical stack, measured rather than guessed: the run HUD, then the heading
+    // band - the beat cue when one is up, the "SELECT A SKILL" rule otherwise - then the
+    // three cards, then Refresh. The cue used to sit at a fixed row and land on the top
+    // card on anything that was not a 400x720 phone.
+    const u = this.ui;
+    const stackTop = this.panelTop();
+    const band = this.headBand();
+    // `cue` is its own screen-pinned root, unlike the cards which are children of the
+    // panel. Place it through pinTo so rotation cannot apply the new camera zoom twice.
+    if (this.cueOn) this.s.pinTo(this.cue, this.w / 2, stackTop + band / 2);
+    header.setPosition(this.w / 2, stackTop + band / 2).setScale(k);
+
+    const top = stackTop + band;
     const centre = Phaser.Math.Clamp(
-      this.h / 2,
+      top + span / 2 + Math.max(0, (this.h - top - span - 96 * u) / 2),
       top + span / 2,
-      Math.max(top + span / 2, this.h - span / 2 - 84 * k)
+      Math.max(top + span / 2, this.h - span / 2 - 84 * u)
     );
 
-    header.setPosition(this.w / 2, headerY).setScale(k);
-    refresh.setPosition(this.w / 2, Math.min(centre + span / 2 + 48 * k, this.h - 38 * k)).setScale(k);
+    refresh.setPosition(this.w / 2, Math.min(centre + span / 2 + 46 * u, this.h - 34 * u)).setScale(k);
 
     for (let i = 3; i < c.length; i++) {
       const card = c.getAt(i) as Phaser.GameObjects.Container;
@@ -780,8 +830,8 @@ export class Hud {
 
     // Both badges do the same thing: hand off to the network's own install call. The
     // store is the network's to choose - a playable must never carry its own store URL.
-    const google = this.makeStoreBadge('google');
-    const apple = this.makeStoreBadge('apple');
+    const google = this.makeStoreBadge('playstore');
+    const apple = this.makeStoreBadge('appstore');
     // Nested: the inner container carries the pulse, the outer one the layout scale. A
     // tween writes an absolute scale, so pulsing the laid-out container throws its
     // fitted size away and the badges run off the sides of a narrow screen.
@@ -839,43 +889,72 @@ export class Hud {
       shade.fillRect(0, this.h - band + (band * i) / slices, this.w, band / slices + 1);
     }
 
-    // side by side, shrunk to fit rather than wrapped - two badges on one line is how a
-    // store lockup reads, and stacking them buries the art
+    // Side by side on one line - that is how a store lockup reads, and stacking them
+    // buries the art. The two badges have different aspects, so they are matched on
+    // height and the pair is centred on their combined width.
     const [google, apple] = btn.getData('pair') as Phaser.GameObjects.Container[];
-    const gap = 12;
-    google.setPosition(-(BADGE.w + gap) / 2, 0);
-    apple.setPosition((BADGE.w + gap) / 2, 0);
+    const gap = BADGE.gap * this.ui;
+    const h = BADGE.h * this.ui;
+    const widths = [google, apple].map((c) => {
+      const img = c.list[0] as Phaser.GameObjects.Image;
+      const k = h / img.height;
+      img.setScale(k);
+      (c.list[1] as Phaser.GameObjects.Rectangle).setScale(k);
+      return img.width * k;
+    });
+    const total = widths[0] + widths[1] + gap;
+    google.setPosition(-total / 2 + widths[0] / 2, 0);
+    apple.setPosition(total / 2 - widths[1] / 2, 0);
     btn
       .setPosition(this.w / 2, this.h - Math.max(46, this.h * 0.085))
       // 1.04 of headroom for the pulse the inner container is running
-      .setScale(Math.min(1, (this.w - 28) / ((BADGE.w * 2 + gap) * 1.04)));
+      .setScale(Math.min(1, (this.w - 24) / (total * 1.04)));
   }
 
   // ----------------------------------------------------------------- resize
   resize(width: number, height: number) {
     this.w = width;
     this.h = height;
+    // The short side is what decides it: a 1280x800 tablet and a 280x480 phone should
+    // give the HUD the same share of the screen, not the same pixel count.
+    this.ui = Phaser.Math.Clamp(Math.min(width, height) / 400, 0.7, 2.2);
+    const u = this.ui;
+    this.restyle();
     this.screens = this.screens.filter((c) => c.scene);
     for (const c of this.screens) this.s.pinTo(c);
-    const pad = 14;
-    this.layoutBars(width, pad);
 
+    const pad = 14 * u;
+    this.drawCue();
+    this.layoutBars(width, pad);
+    this.layoutLoadout();
+
+    // Everything under the slab stacks off its bottom edge rather than sitting at a
+    // fixed row, so nothing lands on top of it when the scale changes.
+    const statY = this.barsBottom + 16 * u;
     this.stats.forEach((st, i) => {
-      const x = pad + 16 + i * Math.min(110, (width - pad * 2) / 3);
-      st.icon.setPosition(x, 98);
-      st.label.setPosition(x + 18, 98);
+      const x = pad + 16 * u + i * Math.min(110 * u, (width - pad * 2) / 3);
+      st.icon.setPosition(x, statY).setScale(0.5 * u);
+      st.label.setPosition(x + 18 * u, statY);
     });
 
-    this.loadout.setPosition(pad, height - 54);
-    this.bannerText.setPosition(width / 2, height * 0.26);
-    this.bossBar.setPosition(width / 2, 132);
+    this.hudBottom = statY + 14 * u;
+    this.loadout.setPosition(pad, height - 54 * u);
+    this.bossBar.setPosition(width / 2, statY + 42 * u).setScale(u);
 
-    // brief 2: the Attack -> Loot -> Upgrade panel, centred under the run stats
-    // the beat cue sits above the card stack, which is centred
-    this.cue.setPosition(width / 2, Math.max(150, height * 0.2));
-    this.intro.setPosition(width / 2, height * 0.24);
+    // Hints sit in the play area, clear of the run stats above them and of the card
+    // stack below: a fixed fraction of the height puts them on the HUD on a short screen.
+    const hintTop = statY + 34 * u;
+    this.bannerText.setPosition(width / 2, Math.max(hintTop + 30 * u, height * 0.26));
+    // while a panel is open the panel owns the cue's slot (see layoutOverlay)
+    if (!this.overlay || this.overlay.getData('end') || !this.cueOn) {
+      this.s.pinTo(this.cue, width / 2, Math.max(hintTop, Math.min(height * 0.2, height * 0.5)));
+    }
+    this.s.pinTo(this.intro, width / 2, Phaser.Math.Clamp(height * 0.3, hintTop + 40 * u, height * 0.55));
     // "Survive, Upgrade, Evolve!" is authored for a 400px phone and is wider than a
     // small one; the whole overlay shrinks rather than the headline wrapping mid-word.
+    const [introTitle, introSub] = this.intro.list as Phaser.GameObjects.Text[];
+    introTitle.setPosition(0, 0);
+    introSub.setPosition(0, introTitle.height * 0.72 + 8 * u);
     const introW = Math.max(...this.intro.list.map((o) => (o as Phaser.GameObjects.Text).width || 0));
     this.intro.setScale(Math.min(1, (width - 28) / Math.max(1, introW)));
 
