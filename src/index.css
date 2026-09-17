@@ -13,6 +13,11 @@ body {
   height: inherit;
   width: inherit;
 }
+/* An inline canvas sits on a text baseline, which hangs ~4px of descender space under
+   it and makes the document taller than the viewport. */
+canvas {
+  display: block;
+}
 * {
   -webkit-tap-highlight-color: transparent;
   -webkit-touch-callout: none;

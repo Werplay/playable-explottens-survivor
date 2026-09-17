@@ -40,6 +40,7 @@ import gemGreen from 'assets/gem_green.png';
 import gemBlue from 'assets/gem_blue.png';
 import gemGold from 'assets/gem_gold.png';
 import meat from 'assets/meat.png';
+import crate from 'assets/crate.png';
 
 import bullet from 'assets/bullet.png';
 import bulletLong from 'assets/bullet_long.png';
@@ -75,6 +76,11 @@ import sfxBoom from 'assets/sfx_boom.mp3';
 import sfxHurt from 'assets/sfx_hurt.mp3';
 import sfxLevelup from 'assets/sfx_levelup.mp3';
 import sfxTap from 'assets/sfx_tap.mp3';
+import sfxPowerup from 'assets/sfx_powerup.mp3';
+import sfxCrate from 'assets/sfx_crate.mp3';
+import sfxUrgent from 'assets/sfx_urgent.mp3';
+import sfxVictory from 'assets/sfx_victory.mp3';
+import sfxEvo from 'assets/sfx_evo.mp3';
 
 import hudTime from 'assets/hud_time.png';
 import hudKills from 'assets/hud_kills.png';
@@ -235,7 +241,17 @@ export const SOUNDS: Record<string, Sound> = {
   boom: { url: sfxBoom, volume: 0.35, gap: 0.09 },
   hurt: { url: sfxHurt, volume: 0.5, gap: 0.4 },
   levelup: { url: sfxLevelup, volume: 0.6, gap: 0 },
-  tap: { url: sfxTap, volume: 0.5, gap: 0 }
+  tap: { url: sfxTap, volume: 0.5, gap: 0 },
+  /** brief 4: the power-up cue on an upgrade pick */
+  powerup: { url: sfxPowerup, volume: 0.55, gap: 0 },
+  /** brief 2: a loot box popping */
+  crate: { url: sfxCrate, volume: 0.5, gap: 0.05 },
+  /** brief note 1: the last seconds on the clock */
+  urgent: { url: sfxUrgent, volume: 0.6, gap: 0.5 },
+  /** brief 7: the fanfare over the win card */
+  victory: { url: sfxVictory, volume: 0.7, gap: 0 },
+  /** brief 5: the game's own berserk intro, as the dramatic evolution cue */
+  evo: { url: sfxEvo, volume: 0.7, gap: 0 }
 };
 
 export const IMAGES: Record<string, string> = {
@@ -255,6 +271,7 @@ export const IMAGES: Record<string, string> = {
   gem_blue: gemBlue,
   gem_gold: gemGold,
   meat,
+  crate,
   bullet,
   bullet_long: bulletLong,
   w_croissant: wCroissant,
@@ -325,6 +342,8 @@ export interface EnemyDef {
   radius: number;
   gem: number;
   boss?: boolean;
+  /** a loot box rather than a plane: it is shot open, it does not chase or hurt */
+  crate?: boolean;
 }
 
 export const ENEMIES: Record<string, EnemyDef> = {
@@ -336,30 +355,110 @@ export const ENEMIES: Record<string, EnemyDef> = {
   bomberkitty: { key: 'e_bomberkitty', hp: 78, speed: 132, damage: 12, scale: ART_SCALE, radius: 21, gem: 2 },
   razorclaw: { key: 'e_razorclaw', hp: 120, speed: 142, damage: 14, scale: ART_SCALE, radius: 21, gem: 2 },
   hammerhead: { key: 'e_hammerhead', hp: 420, speed: 128, damage: 18, scale: ART_SCALE, radius: 30, gem: 2, boss: true },
-  boss: { key: 'e_boss', hp: 1600, speed: 152, damage: 24, scale: ART_SCALE, radius: 40, gem: 3, boss: true }
+  boss: { key: 'e_boss', hp: 1600, speed: 152, damage: 24, scale: ART_SCALE, radius: 40, gem: 3, boss: true },
+  /** The brief's loot box. It rides the enemy list so it gets the projectile hit test,
+   *  the damage flash and the death burst for free; `speed` 0 parks it, `damage` 0 makes
+   *  it harmless to fly into, and `boss` keeps the swarm from shoving it around. */
+  crate: { key: 'crate', hp: 30, speed: 0, damage: 0, scale: ART_SCALE, radius: 20, gem: 1, boss: true, crate: true }
 };
 
-// --- waves (EnemyWaveData-style: start/end time, pool, spawn interval) -----
+// --- the brief's seven beats ----------------------------------------------
+/** Playable Ad Brief: Roguelite - "Explottens - Rogue Arcade".
+ *
+ *  The run is a script, not a clock. Each beat ends on its own condition - the first
+ *  drag, the XP bar filling, the evo pick, the mini-boss dying - so the copy on screen
+ *  can never describe something the player is not doing. Brief note 5 (evo upgrades
+ *  happen in the same level, no scene change) is why this is one continuous arena from
+ *  the intro to the win card: no cuts, no reloads, one `GameScene`.
+ *
+ *  Every string, count and colour the brief lists under "Editable Elements" is here. */
+export type Beat = 'intro' | 'combat' | 'collect' | 'upgrade' | 'evo' | 'evoAttack' | 'win';
+
+export const BEATS = {
+  /** 1. Intro - "grab attention with visual chaos and simple interaction" */
+  intro: {
+    overlay: 'Survive, Upgrade, Evolve!',
+    hint: 'Swipe to move',
+    /** loot boxes are in the brief's opening scene, alongside the incoming enemies */
+    crates: 2
+  },
+  /** 2. Combat loop, and 3. the gem cue it runs into */
+  combat: {
+    /** the brief's "Small UI panel shows: Attack -> Loot -> Upgrade" */
+    steps: ['ATTACK', 'LOOT', 'UPGRADE'],
+    /** seconds of fighting before "Collect gems!" comes up */
+    cue: 2.5,
+    text: 'Collect gems!',
+    /** XP the bar takes to fill into the weapon upgrade (beat 4) */
+    xp: 900
+  },
+  /** 4. Weapon upgrade - pick 1 of 3 */
+  upgrade: { text: 'Upgrade your weapon to deal more damage!' },
+  /** 5. Evo upgrade */
+  evo: {
+    text: 'Evolve your weapon for unstoppable power!',
+    horde: 16,
+    /** XP from the weapon upgrade to the evo pick (beat 5) */
+    xp: 1500
+  },
+  /** 6. Evo attack - the mini-boss wave */
+  evoAttack: {
+    text: 'Unleash your evolved attacks!',
+    /** the brief's "Boss enemy type"; 'boss' swaps the vaderboss in */
+    miniBoss: 'hammerhead',
+    /** Kitty Rage hits for 50x a normal shot, so the mini-boss needs the HP to be a
+     *  fight rather than a speed bump - about six seconds of the ten-second rage. */
+    hpMul: 55,
+    /** loot the mini-boss scatters on death, the brief's "Loot particle effects" */
+    lootBurst: 10
+  },
+  /** 7. Win (reward and CTA) */
+  win: {
+    overlay: 'Victory! Your hero is unstoppable!',
+    badge: 'WIN',
+    cta: 'PLAY NOW',
+    ctaColor: 0x35c93f,
+    confetti: 110,
+    /** The brief describes one ending, and it is the win. The health bar still drops -
+     *  brief 2 wants it visible and it is where the tension lives - but the run cannot
+     *  be lost, so beat 7 always lands. Set false to let the player be shot down. */
+    noFail: true
+  },
+  /** Brief note 1: "optional timer to create urgency (last 3 seconds blinking red +
+   *  dramatic SFX)". It is a backstop - the mini-boss normally dies well inside it - and
+   *  running it out still ends on the CTA, because an ad never punishes the player. */
+  timer: { seconds: 26, warn: 3 }
+};
+
+/** How thick the sky is per beat - the brief's "Enemy count" editable.
+ *  Pools and pacing follow EnemyWaveData's shape (a pool, an interval, a burst, a cap);
+ *  what the brief changes is that the beat picks the row, not the wall clock. */
 export interface Wave {
-  start: number;
-  end: number;
   pool: string[];
   interval: number;
   burst: number;
   cap: number;
 }
 
-export const WAVES: Wave[] = [
-  { start: 0, end: 16, pool: ['furry', 'speedbug'], interval: 0.5, burst: 2, cap: 20 },
-  { start: 16, end: 34, pool: ['furry', 'speedbug', 'ladybug'], interval: 0.42, burst: 2, cap: 30 },
-  { start: 34, end: 52, pool: ['feline', 'helmetbee', 'ladybug'], interval: 0.36, burst: 3, cap: 40 },
-  { start: 52, end: 72, pool: ['feline', 'bomberkitty', 'helmetbee'], interval: 0.3, burst: 3, cap: 50 },
-  { start: 72, end: 92, pool: ['razorclaw', 'bomberkitty', 'speedbug'], interval: 0.26, burst: 4, cap: 60 }
-];
+export const BEAT_WAVE: Record<Beat, Wave> = {
+  intro: { pool: ['furry', 'speedbug'], interval: 0.55, burst: 2, cap: 8 },
+  combat: { pool: ['furry', 'speedbug', 'ladybug'], interval: 0.42, burst: 2, cap: 14 },
+  collect: { pool: ['furry', 'speedbug', 'ladybug'], interval: 0.36, burst: 2, cap: 18 },
+  upgrade: { pool: ['feline', 'helmetbee', 'ladybug'], interval: 0.32, burst: 3, cap: 22 },
+  evo: { pool: ['feline', 'helmetbee', 'ladybug'], interval: 0.3, burst: 3, cap: 26 },
+  /** "Enemies hoarde appears" (brief 5) carried through the mini-boss wave (brief 6) */
+  evoAttack: { pool: ['razorclaw', 'bomberkitty', 'speedbug', 'feline'], interval: 0.16, burst: 5, cap: 55 },
+  win: { pool: [], interval: 99, burst: 0, cap: 0 }
+};
 
-export const MINIBOSS_AT = 44; // HammerHead joins mid-run
-export const BOSS_AT = 78; // vaderboss closes the run
-export const RUN_LIMIT = 110; // hard stop so the ad always reaches its end card
+/** Loot boxes. They sit in the arena, sparkle, and burst into gems when shot -
+ *  the brief's "Loot type" and "Lootboxes" editables. */
+export const CRATE = {
+  /** gems a popped crate scatters */
+  drop: 5,
+  /** how many are kept in play through the combat beats */
+  keep: 3
+};
 
 /** Keep at least this many in play; a strong loadout otherwise empties the sky. */
 export const MIN_ON_SCREEN = 10;
@@ -484,9 +583,7 @@ export const EVO = {
    *  ten seconds to read as a massacre rather than an empty orange screen. */
   intervalMul: 0.35,
   burstBonus: 4,
-  capMul: 2,
-  /** offered on every pick from this level until it is taken - the ad needs the beat */
-  offerAt: 3
+  capMul: 2
 };
 
 /** Kept out of SKILLS: it is dealt by hand rather than rolled, and only once. */

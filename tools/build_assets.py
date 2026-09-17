@@ -22,6 +22,7 @@ OUT = '/Users/zeeshan/Desktop/work/playable-explottens-survivor/assets'
 NE = U + '/SpineObjects/EnemiesCombined/NormalEnemies/'
 BO = U + '/SpineObjects/EnemiesCombined/Bots/'
 EX = U + '/SpineObjects/Arsenal/Explosion/'
+CH = U + '/SpineObjects/Chests/'
 os.makedirs(OUT, exist_ok=True)
 sizes = {}
 
@@ -96,6 +97,13 @@ flat(A + 'fish.png', 'w_fish.png', 36)
 # Berserk's bullet (SpecialSkillBulletData.csv `Berserk1` Sprite), the plasma bolt
 # Berserk.cs sprays six at a time.
 flat(A + 'plasmaRed.png', 'w_plasma.png', 42)
+
+# ---- loot crate (the brief's loot box) ----------------------------------
+# The game's own chest skeleton. `CloseIdle` is a 2.7s shimmer the chest itself barely
+# moves through - the motion is all in glow layers the `default` skin carries - so one
+# posed frame of the `Cadet` skin ships and GameScene draws the sparkle over it.
+put(spinestrip.strip(CH + 'chest.json', CH + 'chest.atlas.txt', 'CloseIdle', 1, 48, 'Cadet')[0],
+    'crate.png', 48)
 flat('/Sprites/Arsenal/shield.png', 'w_shield.png', 160, 32)
 
 # ---- bullet hit spark ----------------------------------------------------
@@ -141,14 +149,22 @@ frames_meta['hit'] = (HIT_W, strip.height, len(cells), 30.0)
 # these stay 130-byte pointers. Mono 22kHz 32kbps - every clip is under two seconds and
 # base64 inlining makes an ad pay for each byte one and a third times.
 AUD = U + '/Audios/SFX/'
+# `clip` trims the source to its first N seconds - the evolution sting and the fanfare
+# are five second cues and an ad pays for every one of those seconds twice.
 SFX = [
-    ('sfx_shoot',   'looseCannon.mp3'),          # every cannon in the reference
-    ('sfx_hit',     'enemyBeingHit.mp3'),
-    ('sfx_boom',    'explosionEnemyPlane.mp3'),  # Enemy.SpawnExplosions
-    ('sfx_hurt',    'playerHit.mp3'),
-    ('sfx_levelup', 'levelUp.mp3'),              # InGameXpHandler
-    ('sfx_tap',     'test/popUp.mp3'),
+    ('sfx_shoot',   'looseCannon.mp3',     0),   # every cannon in the reference
+    ('sfx_hit',     'enemyBeingHit.mp3',   0),
+    ('sfx_boom',    'explosionEnemyPlane.mp3', 0),  # Enemy.SpawnExplosions
+    ('sfx_hurt',    'playerHit.mp3',       0),
+    ('sfx_levelup', 'levelUp.mp3',         0),   # InGameXpHandler
+    ('sfx_tap',     'test/popUp.mp3',      0),
+    ('sfx_powerup', 'powerUpCollected.mp3', 0),  # brief 4: power-up SFX on an upgrade pick
+    ('sfx_crate',   'chestOpen.mp3',       0),   # brief 2: loot box pops
+    ('sfx_urgent',  'upcomingWave.mp3',    0),   # brief note 1: the last three seconds
+    ('sfx_victory', 'victory.mp3',       3.2),   # brief 7: fanfare over the win card
 ]
+# The evolution sting is the game's own berserk intro, from BGM rather than SFX.
+SFX_BGM = [('sfx_evo', 'BGM/BerserkAudioStart.mp3', 2.2)]  # brief 5: dramatic evolution SFX
 # The gameplay track GameManager.cs starts for this mode, whole: 85.5s against a run of
 # ~95s, so it plays through once and barely wraps. It used to ship as one 8-bar phrase
 # (139.6 BPM off the onset envelope -> 1.72s bars, the window at 27.52s wrapping with the
@@ -160,13 +176,14 @@ SFX = [
 # would buy a lower bitrate and lose the top end - music through it sounds underwater.
 BGM = ('bgm', 'BGM/trainingMusic.mp3', 40)
 
-for name, rel in SFX:
+for name, rel, clip in SFX + [(n, '../' + r, c) for n, r, c in SFX_BGM]:
     src = AUD + rel
     if not os.path.exists(src) or os.path.getsize(src) < 1000:
         print('%-12s SKIPPED - missing, or still a Git LFS pointer' % name)
         continue
     dst = os.path.join(OUT, name + '.mp3')
     subprocess.run(['ffmpeg', '-y', '-v', 'error', '-i', src,
+                    *(['-t', str(clip)] if clip else []),
                     '-ac', '1', '-ar', '22050', '-b:a', '32k',
                     '-map_metadata', '-1', dst], check=True)
     sizes[name + '.mp3'] = os.path.getsize(dst)

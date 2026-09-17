@@ -10,14 +10,45 @@ game's own font, and code inlined.
 
 ## The loop
 
-Drag anywhere to fly. The plane auto-fires at the nearest enemy. Cat planes and
-bug-bots close in from every side in timed waves; kills drop XP gems that magnet
-in, the XP bar fills, and each level-up pauses the run for a pick of three
-upgrades. From level 3 every pick offers **Kitty Rage** until it is taken: ten
-seconds of the sky turned orange, the plane doubled in speed and untouchable, and six
-plasma bolts a tenth of a second going out in every direction at fifty times a normal
-shot. A HammerHead mini-boss joins at 0:44 and the vaderboss closes the run at 1:18.
-Win or die, the end card offers the store link.
+Swipe anywhere to fly. The plane auto-fires at the nearest enemy. Cat planes and
+bug-bots close in from every side; kills and shot-open loot boxes drop XP gems that
+magnet in, and the XP bar fills twice — once into a weapon upgrade, once into
+**Kitty Rage**: ten seconds of the sky turned orange, the plane doubled in speed and
+untouchable, and six plasma bolts a tenth of a second going out in every direction at
+fifty times a normal shot. A mini-boss rides in on that horde, and taking it down ends
+the run on the victory card. About 22 seconds, start to CTA.
+
+## The brief
+
+The run is the seven beats of *Playable Ad Brief: Roguelite — "Explottens - Rogue
+Arcade"* (`Playable Ad Brief_ Explottens Survivor-1.pdf`), in order. It is a script,
+not a clock: every beat ends on its own condition — the first swipe, the XP bar
+filling, the evo pick, the mini-boss dying — so the copy on screen can never describe
+something the player is not doing. Brief note 5 (*evo weapon upgrades happen in the
+same level, no scene change*) is why it is one continuous `GameScene` from the intro
+to the CTA: no cuts, no reloads.
+
+| # | Beat | What the player sees | Where |
+|---|---|---|---|
+| 1 | Intro | "Survive, Upgrade, Evolve!" over a small arena already holding enemies **and loot boxes**; a finger cue rides on the plane until the first swipe | `BEATS.intro`, `Hud.build`, `GameScene.begin` |
+| 2 | Combat loop | auto-attack, health bar, gems on every kill, and the **Attack → Loot → Upgrade** panel tracking the beat; loot boxes sparkle and burst when shot | `BEATS.combat`, `Hud.onBeat`, `GameScene.updateCrates` |
+| 3 | Single attack weapon | "Collect gems!" with the XP bar and the ability menu ringed while it is up | `BEATS.combat.text`, `Hud.update` |
+| 4 | Weapon upgrade | "Upgrade your weapon to deal more damage!" over three weapons; the pick flashes, sparks and glows, and lands on a power-up cue | `BEATS.upgrade`, `Hud.pickFlash` |
+| 5 | Evo upgrade | "Evolve your weapon for unstoppable power!"; the evo is dealt first with an animated cursor on it, and taking it drops the horde and the berserk sting | `BEATS.evo`, `Hud.makeCursor`, `GameScene.startEvo` |
+| 6 | Evo attack | "Unleash your evolved attacks!" over the mini-boss wave, the spray auto-targeting, loot scattering as it dies | `BEATS.evoAttack`, `GameScene.startMiniBossWave` |
+| 7 | Win | wave cleared, confetti, a green **WIN** stamp and "Victory! Your hero is unstoppable!", then the end card: app logo and **PLAY NOW** | `BEATS.win`, `Hud.showVictory` |
+
+Brief note 1's urgency timer counts **down**, and blinks red over a dramatic cue for
+its last three seconds (`BEATS.timer`). It is a backstop — the mini-boss normally dies
+with time in hand — and running it out still ends on the CTA, because an ad never
+punishes the player. For the same reason `BEATS.win.noFail` clamps the plane at 1 HP:
+the health bar still drops, which is where the tension the brief asks for lives, but
+the brief describes one ending and it is the win.
+
+Everything the brief lists under **Editable Elements** — enemy counts, loot type,
+weapon and skill pools, upgrade and evolution visuals, boss enemy type, loot boxes,
+CTA text and colour, every line of copy — is a field of `BEATS`, `BEAT_WAVE` or
+`CRATE` in `src/data.ts`.
 
 ## What came from the Unity project
 
@@ -27,7 +58,9 @@ Win or die, the end card offers the store link.
 | Gem values 10 / 40 / 100 / 2000 | `Assets/Prefabs/Collectibles/XpItem.prefab` |
 | Base ATK 10 / HP 100 | `Assets/Scripts/Player/PlayerStats.cs`, `Resources/CSV/SurvivorData/SurvivorLevelUpData.csv` |
 | Skill names, descriptions, icons | `Assets/Prefabs/Skills/**/*.prefab` (`title` / `description` / `mainSprite`) |
-| Wave structure (start/end, pool, cap) | `Assets/Scripts/EnemyWaves/EnemyWaveData.cs`, `EnemyWaveController.cs` |
+| Wave shape (pool, interval, burst, cap) | `Assets/Scripts/EnemyWaves/EnemyWaveData.cs`, `EnemyWaveController.cs` — the brief's beat picks the row, where the game uses the stage clock |
+| Loot box art and its pop | `Assets/SpineObjects/Chests/chest.json` (`Cadet` skin), `Audios/SFX/chestOpen.mp3` |
+| Power-up, evolution, urgency and victory cues | `Audios/SFX/powerUpCollected.mp3`, `Audios/BGM/BerserkAudioStart.mp3`, `Audios/SFX/upcomingWave.mp3`, `Audios/SFX/victory.mp3` |
 | Camera field of view and follow | `Assets/Scenes/GameplayScene.unity` (perspective, 60° vertical FOV), `Assets/Scripts/Stage/StageManager.cs` (`SetCamZoom(28, 1.5f)` = 32.3 world units of height), `Assets/Scripts/Camera/CameraMovement.cs` (locked to the plane, not trailing) |
 | Hero plane, every enemy, the boss | Spine skeletons under `Assets/SpineObjects/**`, baked to animated sprite strips |
 | Chaos Guard's reach, damage step and re-hit gate | `Resources/CSV/Equipment/ActiveSkillsData.csv` rows `Shield1`..`Shield5` — `CollisionRadius` 1 → 3 world units is the bubble, `HitCoolDown` 1 s is how long an enemy inside it waits to be hit again |
@@ -103,10 +136,16 @@ the orange cuts.
 
 ## Tuning that is *not* from the game
 
-A real Survival run lasts 10–20 minutes; this ad has ~95 seconds. Three knobs are
+A real Survival run lasts 10–20 minutes; this ad has ~22 seconds. These knobs are
 deliberately different and are marked as such in `src/data.ts`:
 
-- `XP_RATE` scales gem XP so level-ups land every ~8–10 s.
+- The XP bar is a **pacing device**, not the game's curve. `BEATS.combat.xp` and
+  `BEATS.evo.xp` size its two scripted fills so they land on beats 4 and 5;
+  `InGameXpHandler`'s own `40L² + 80L − 20` takes over afterwards and from there only
+  moves the level counter. `XP_RATE` still scales what a gem is worth.
+- `BEATS.evoAttack.hpMul` multiplies the mini-boss's HP by 55. Kitty Rage hits for 50×
+  a normal shot, so at its stock 420 HP the mini-boss is a speed bump rather than the
+  fight beat 6 is supposed to showcase.
 - `PLAYER.health` is 140 rather than 100.
 - Enemy `speed` values are raised so the swarm can close on a 250 px/s plane in a
   camera-sized arena.

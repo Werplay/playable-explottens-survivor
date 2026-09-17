@@ -1,9 +1,11 @@
 import * as Phaser from 'phaser';
 import { sdk } from '@smoud/playable-sdk';
-import { FONT, SkillDef } from './data';
+import { BEATS, Beat, FONT, SkillDef } from './data';
 import type { GameScene } from './GameScene';
 
-const D = { hud: 100, overlay: 200 };
+// The beat cue sits above the level-up panel: it is what tells the player what the
+// panel is for, so it cannot be behind the dim.
+const D = { hud: 100, overlay: 200, cue: 300 };
 const GOLD = '#ffd34d';
 
 /** Colours read off the in-game "Select a Skill" panel. Weapons glow green, passives
@@ -58,6 +60,18 @@ export class Hud {
   private overlay?: Phaser.GameObjects.Container;
   private relayout?: () => void;
   private bannerText!: Phaser.GameObjects.Text;
+  /** brief 2: the "Attack -> Loot -> Upgrade" panel */
+  private steps!: Phaser.GameObjects.Container;
+  private stepLabels: Phaser.GameObjects.Text[] = [];
+  /** the beat's line of copy, and the finger that points at what it is talking about */
+  private cue!: Phaser.GameObjects.Container;
+  private cueText!: Phaser.GameObjects.Text;
+  private cueBg!: Phaser.GameObjects.Graphics;
+  /** brief 1: the tap cue that rides on the player until the first swipe */
+  private finger!: Phaser.GameObjects.Container;
+  /** brief 3: the ring drawn round the XP bar and the ability menu while they matter */
+  private xpGlow!: Phaser.GameObjects.Graphics;
+  private beat: Beat = 'intro';
   private bossBar!: Phaser.GameObjects.Container;
   private bossFill!: Phaser.GameObjects.Rectangle;
 
@@ -110,15 +124,93 @@ export class Hud {
     this.bossBar = s.add.container(0, 0, [bossBg, this.bossFill, bossName]).setVisible(false);
     this.root.add(this.bossBar);
 
-    // intro
-    const tap = s.add.text(0, 0, 'DRAG TO FLY', this.label(38, GOLD)).setOrigin(0.5);
-    const sub = s.add.text(0, 44, 'Survive the swarm', this.label(20)).setOrigin(0.5);
-    const hand = s.add.circle(0, -70, 26, 0xffffff, 0.9);
-    s.tweens.add({ targets: hand, x: 70, duration: 900, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    s.tweens.add({ targets: tap, scale: 1.08, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.intro = s.add.container(0, 0, [hand, tap, sub]).setScrollFactor(0).setDepth(D.overlay);
+    // brief 3: the ring the "Collect gems!" cue draws round the XP bar and the loadout
+    this.xpGlow = s.add.graphics().setVisible(false);
+    this.root.add(this.xpGlow);
+
+    // brief 2: "Small UI panel shows: Attack -> Loot -> Upgrade"
+    this.steps = s.add.container(0, 0).setVisible(false);
+    BEATS.combat.steps.forEach((name, i) => {
+      if (i) {
+        const arrow = s.add.text(0, 0, '>', this.label(15, '#7c89a8')).setOrigin(0.5);
+        arrow.setData('arrow', i);
+        this.steps.add(arrow);
+      }
+      const t = s.add.text(0, 0, name, this.label(15, '#8d99b5')).setOrigin(0.5);
+      this.stepLabels.push(t);
+      this.steps.add(t);
+    });
+    this.root.add(this.steps);
+
+    // brief 1: the text overlay, and the finger that taps on the player himself
+    const title = s.add.text(0, 0, BEATS.intro.overlay, this.label(30, GOLD)).setOrigin(0.5);
+    const sub = s.add.text(0, 40, BEATS.intro.hint, this.label(19)).setOrigin(0.5);
+    s.tweens.add({ targets: title, scale: 1.06, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.intro = s.add.container(0, 0, [title, sub]).setScrollFactor(0).setDepth(D.overlay);
+
+    const pad = s.add.circle(0, 0, 30, 0xffffff, 0.22);
+    const tip = s.add.circle(0, 0, 15, 0xffffff, 0.92);
+    this.finger = s.add.container(0, 0, [pad, tip]).setScrollFactor(0).setDepth(D.overlay);
+    // a swipe, not a tap in place: the brief's interaction is "swipe to move"
+    s.tweens.add({ targets: this.finger, x: '+=52', duration: 780, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    s.tweens.add({ targets: pad, scale: 1.5, alpha: 0, duration: 780, repeat: -1 });
+
+    // the beat's line of copy - above the level-up panel, since it explains it
+    this.cueBg = s.add.graphics();
+    this.cueText = s.add.text(0, 0, '', this.label(21, '#ffffff')).setOrigin(0.5);
+    this.cue = s.add.container(0, 0, [this.cueBg, this.cueText]).setScrollFactor(0).setDepth(D.cue).setAlpha(0);
+
     this.pinScreen(this.root);
     this.pinScreen(this.intro);
+    this.pinScreen(this.finger);
+    this.pinScreen(this.cue);
+  }
+
+  /** Brief note 4: a cue lives until its action is done, then fades - never lingers. */
+  private say(text: string) {
+    const s = this.s;
+    this.cueText.setText(text);
+    const w = this.cueText.width + 44;
+    const h = this.cueText.height + 22;
+    this.cueBg.clear();
+    this.cueBg.fillStyle(0x0d2136, 0.86).fillRoundedRect(-w / 2, -h / 2, w, h, 12);
+    this.cueBg.lineStyle(3, 0xffc93c, 0.9).strokeRoundedRect(-w / 2, -h / 2, w, h, 12);
+    s.tweens.killTweensOf(this.cue);
+    this.cue.setScale(0.9);
+    s.tweens.add({ targets: this.cue, alpha: 1, scale: 1, duration: 220, ease: 'Back.easeOut' });
+  }
+
+  private hush() {
+    this.s.tweens.add({ targets: this.cue, alpha: 0, duration: 250 });
+  }
+
+  /** The script moved on: say the beat's line, light the right step, point at the thing
+   *  the line is about. */
+  onBeat(beat: Beat) {
+    this.beat = beat;
+    const lit = { combat: 0, collect: 1, upgrade: 2, evo: 2 }[beat as 'combat'];
+    this.steps.setVisible(lit !== undefined);
+    this.stepLabels.forEach((t, i) => {
+      const on = i === lit;
+      t.setColor(on ? GOLD : '#8d99b5').setScale(on ? 1.18 : 1);
+    });
+
+    if (beat === 'collect') {
+      this.say(BEATS.combat.text);
+      this.xpGlow.setVisible(true);
+    } else if (beat === 'upgrade') {
+      this.say(BEATS.upgrade.text);
+    } else if (beat === 'evo') {
+      this.say(BEATS.evo.text);
+    } else if (beat === 'evoAttack') {
+      this.xpGlow.setVisible(false);
+      this.say(BEATS.evoAttack.text);
+      this.s.time.delayedCall(2600, () => this.hush());
+    } else if (beat === 'win') {
+      this.hush();
+      this.steps.setVisible(false);
+      this.xpGlow.setVisible(false);
+    }
   }
 
   /** Pin a screen-space root: scrollFactor for scrolling, GameScene.pinTo for zoom. */
@@ -133,13 +225,11 @@ export class Hud {
     this.intro.setVisible(true);
   }
 
+  /** Brief note 4: the cursor and the text both go once the swipe has happened. */
   hideIntro() {
-    this.s.tweens.add({
-      targets: this.intro,
-      alpha: 0,
-      duration: 250,
-      onComplete: () => this.intro.setVisible(false)
-    });
+    for (const c of [this.intro, this.finger]) {
+      this.s.tweens.add({ targets: c, alpha: 0, duration: 250, onComplete: () => c.setVisible(false) });
+    }
   }
 
   banner(text: string) {
@@ -155,8 +245,28 @@ export class Hud {
     this.lvlText.setText(`Lv ${s.level}`);
     this.hpFill.width = this.hpBg.width * Phaser.Math.Clamp(s.hp / s.maxHp, 0, 1);
 
-    const t = Math.floor(s.elapsed);
-    this.stats[0].label.setText(`${Math.floor(t / 60)}:${`${t % 60}`.padStart(2, '0')}`);
+    // brief 1: the finger cue rides on the player rather than sitting near him
+    if (this.finger.visible) {
+      const [px, py] = s.playerScreen();
+      this.s.pinTo(this.finger, px - 26, py + 46);
+    }
+
+    // brief note 1: a countdown, red and blinking through its last seconds
+    const left = Math.max(0, Math.ceil(s.timeLeft));
+    const warn = s.timeLeft <= BEATS.timer.warn && s.beat !== 'win';
+    const lbl = this.stats[0].label;
+    lbl.setText(`${Math.floor(left / 60)}:${`${left % 60}`.padStart(2, '0')}`);
+    lbl.setColor(warn ? '#ff4438' : '#ffffff');
+    lbl.setScale(warn && Math.floor(s.timeLeft * 4) % 2 === 0 ? 1.22 : 1);
+
+    // brief 3: ring the XP bar and the ability menu while "Collect gems!" is up
+    if (this.xpGlow.visible) {
+      const pulse = 0.45 + 0.35 * Math.sin(s.elapsed * 7);
+      this.xpGlow.clear().lineStyle(4, 0xffe45c, pulse);
+      this.xpGlow.strokeRoundedRect(this.xpBg.x - 5, this.xpBg.y - 15, this.xpBg.width + 10, 26, 8);
+      const n = Math.max(1, s.ownedList().length);
+      this.xpGlow.strokeRoundedRect(this.loadout.x - 5, this.loadout.y - 5, n * 44 + 4, 48, 8);
+    }
     this.stats[1].label.setText(`${s.kills}`);
     this.stats[2].label.setText(`${s.wave}`);
 
@@ -201,14 +311,22 @@ export class Hud {
       for (let i = c.length - 1; i >= 3; i--) c.getAt(i).destroy();
       s.rollChoices().forEach((choice, i) => {
         const card = this.makeCard(choice.def, choice.level, () => {
+          if (c.getData('picked')) return;
+          c.setData('picked', true);
           s.sfx('tap');
-          this.closeLevelUp();
-          s.closeLevelUp(choice.def.id);
+          this.pickFlash(card, () => {
+            this.hush();
+            this.closeLevelUp();
+            s.closeLevelUp(choice.def.id);
+          });
         });
         card.setData('index', i).setAlpha(0);
         c.add(card);
         s.tweens.add({ targets: card, alpha: 1, duration: 200, delay: 60 * i });
+        // brief 5: "Animated cursor points to evo weapon" - the evo is always dealt first
+        if (this.beat === 'evo' && i === 0) card.add(this.makeCursor());
       });
+      c.setData('picked', false);
       pin(c);
       this.relayout?.();
     };
@@ -223,6 +341,40 @@ export class Hud {
     this.overlay = c;
     this.relayout = () => this.layoutOverlay(header, refresh);
     deal();
+  }
+
+  /** Brief 4: the picked card is highlighted, sparks and glows before the panel closes,
+   *  and the others drop away so the eye stays on what was chosen. */
+  private pickFlash(card: Phaser.GameObjects.Container, done: () => void) {
+    const s = this.s;
+    const c = this.overlay;
+    if (c) {
+      for (let i = 3; i < c.length; i++) {
+        const other = c.getAt(i) as Phaser.GameObjects.Container;
+        if (other !== card) s.tweens.add({ targets: other, alpha: 0.15, duration: 180 });
+      }
+    }
+    const k = card.scale;
+    const ring = s.add.circle(0, 0, CARD.h * 0.5).setStrokeStyle(6, 0xffe45c, 0.95);
+    card.add(ring);
+    s.tweens.add({ targets: ring, scale: 3.4, alpha: 0, duration: 420, ease: 'Cubic.easeOut' });
+    const flash = s.add.rectangle(0, 0, CARD.w, CARD.h, 0xffffff, 0.75).setOrigin(0.5);
+    card.add(flash);
+    s.tweens.add({ targets: flash, alpha: 0, duration: 320 });
+    s.tweens.add({ targets: card, scale: k * 1.07, duration: 150, yoyo: true, ease: 'Sine.easeOut' });
+    s.time.delayedCall(380, done);
+  }
+
+  /** The finger the evo card is pointed out with. Same shape as the intro cue, so the
+   *  player reads it as the same instruction. */
+  private makeCursor() {
+    const s = this.s;
+    const pad = s.add.circle(0, 0, 26, 0xffffff, 0.22);
+    const tip = s.add.circle(0, 0, 13, 0xffffff, 0.92);
+    const cur = s.add.container(CARD.w * 0.36, CARD.h * 0.3, [pad, tip]);
+    s.tweens.add({ targets: cur, x: cur.x - 26, y: cur.y - 16, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    s.tweens.add({ targets: pad, scale: 1.6, alpha: 0, duration: 780, repeat: -1 });
+    return cur;
   }
 
   /** "◆ ——  SELECT A SKILL  —— ◆" */
@@ -385,6 +537,71 @@ export class Hud {
     this.relayout = undefined;
   }
 
+  // ----------------------------------------------------------------- victory
+  /** Brief 7: the reward lands on the arena, not on a dialog - the wave is cleared, the
+   *  overlay and the green WIN stamp punch in over confetti, and only then does the end
+   *  card slide up with the logo and the CTA. */
+  showVictory(won: boolean, done: () => void) {
+    const s = this.s;
+    if (!won) {
+      done();
+      return;
+    }
+    s.sfx('victory');
+    const c = this.pinScreen(s.add.container(0, 0).setScrollFactor(0).setDepth(D.cue));
+    const cx = this.w / 2;
+    const cy = this.h * 0.42;
+
+    // confetti: colourful, falling, spinning
+    const colours = [0xffc93c, 0x6cf542, 0x4dd2ff, 0xff6b9d, 0xffffff, 0xff8a3c];
+    for (let i = 0; i < BEATS.win.confetti; i++) {
+      const p = s.add.rectangle(
+        Phaser.Math.Between(0, this.w),
+        Phaser.Math.Between(-this.h * 0.5, 0),
+        Phaser.Math.Between(6, 12),
+        Phaser.Math.Between(9, 17),
+        Phaser.Utils.Array.GetRandom(colours)
+      );
+      p.setAngle(Phaser.Math.Between(0, 360));
+      c.add(p);
+      s.tweens.add({
+        targets: p,
+        y: this.h + 40,
+        angle: p.angle + Phaser.Math.Between(-320, 320),
+        duration: Phaser.Math.Between(1500, 3000),
+        delay: Phaser.Math.Between(0, 700),
+        ease: 'Sine.easeIn'
+      });
+    }
+
+    // the green WIN stamp
+    const badge = s.add.container(cx, cy);
+    const disc = s.add.circle(0, 0, 62, 0x35c93f).setStrokeStyle(7, 0x12551a);
+    const word = s.add.text(0, 0, BEATS.win.badge, this.label(44)).setOrigin(0.5);
+    badge.add([disc, word]);
+    badge.setScale(0).setAngle(-18);
+    c.add(badge);
+    s.tweens.add({ targets: badge, scale: 1, duration: 420, ease: 'Back.easeOut' });
+
+    const line = s.add
+      .text(cx, cy + 110, BEATS.win.overlay, {
+        ...this.label(27, GOLD),
+        align: 'center',
+        wordWrap: { width: this.w - 60 }
+      })
+      .setOrigin(0.5)
+      .setAlpha(0);
+    c.add(line);
+    s.tweens.add({ targets: line, alpha: 1, duration: 320, delay: 260 });
+
+    pin(c);
+    s.time.delayedCall(2100, () => {
+      c.destroy(true);
+      this.screens = this.screens.filter((x) => x !== c);
+      done();
+    });
+  }
+
   // --------------------------------------------------------------- end card
   showEnd(won: boolean) {
     const s = this.s;
@@ -393,15 +610,21 @@ export class Hud {
     const dim = s.add.rectangle(0, 0, this.w, this.h, 0x04101d, 0.9).setOrigin(0);
 
     const icon = s.add.image(0, 0, 'appicon').setScale(0.42);
-    const title = s.add.text(0, 0, won ? 'SKY CLEARED!' : 'SHOT DOWN!', this.label(40, GOLD)).setOrigin(0.5);
+    const title = s.add
+      .text(0, 0, won ? BEATS.win.overlay : 'SHOT DOWN!', {
+        ...this.label(30, GOLD),
+        align: 'center',
+        wordWrap: { width: 380 }
+      })
+      .setOrigin(0.5);
     const score = s.add
-      .text(0, 0, `${s.kills} KILLS   ·   Lv ${s.level}   ·   WAVE ${s.wave}`, this.label(20))
+      .text(0, 0, `${s.kills} KILLS   ·   Lv ${s.level}`, this.label(20))
       .setOrigin(0.5);
     const sub = s.add.text(0, 0, 'Explottens: Survival', this.label(22, '#8fe3ff')).setOrigin(0.5);
 
-    const btnBg = s.add.rectangle(0, 0, 300, 84, 0x35c93f).setOrigin(0.5);
+    const btnBg = s.add.rectangle(0, 0, 300, 84, BEATS.win.ctaColor).setOrigin(0.5);
     btnBg.setStrokeStyle(5, 0x1c6d22);
-    const btnText = s.add.text(0, 0, 'PLAY NOW', this.label(34)).setOrigin(0.5);
+    const btnText = s.add.text(0, 0, BEATS.win.cta, this.label(34)).setOrigin(0.5);
     const btn = s.add.container(0, 0, [btnBg, btnText]);
     s.tweens.add({ targets: btn, scale: 1.07, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     btnBg.setInteractive({ useHandCursor: true }).on('pointerdown', () => sdk.install());
@@ -453,7 +676,18 @@ export class Hud {
     this.bannerText.setPosition(width / 2, height * 0.26);
     this.bossBar.setPosition(width / 2, 132);
 
-    this.intro.setPosition(width / 2, height * 0.62);
+    // brief 2: the Attack -> Loot -> Upgrade panel, centred under the run stats
+    this.steps.setPosition(width / 2, 116);
+    const gap = Math.min(78, (width - 60) / 3);
+    this.stepLabels.forEach((t, i) => t.setPosition((i - 1) * gap, 0));
+    for (const child of this.steps.list) {
+      const arrow = (child as Phaser.GameObjects.Text).getData?.('arrow');
+      if (arrow) (child as Phaser.GameObjects.Text).setPosition((arrow - 1.5) * gap, 0);
+    }
+
+    // the beat cue sits above the card stack, which is centred
+    this.cue.setPosition(width / 2, Math.max(150, height * 0.2));
+    this.intro.setPosition(width / 2, height * 0.24);
 
     if (this.overlay?.getData('end')) {
       this.layoutEnd();

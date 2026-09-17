@@ -2,7 +2,10 @@ import * as Phaser from 'phaser';
 import { sdk } from '@smoud/playable-sdk';
 import {
   ART_SCALE,
-  BOSS_AT,
+  BEATS,
+  BEAT_WAVE,
+  Beat,
+  CRATE,
   ENEMIES,
   EnemyDef,
   EVO,
@@ -10,10 +13,8 @@ import {
   GEMS,
   IMAGES,
   SOUNDS,
-  MINIBOSS_AT,
   PLAYER,
   MIN_ON_SCREEN,
-  RUN_LIMIT,
   SHIELD,
   SKILLS,
   SHEETS,
@@ -23,7 +24,6 @@ import {
   BG,
   SKILL_BY_ID,
   SkillDef,
-  WAVES,
   XP_RATE,
   xpForLevel
 } from './data';
@@ -70,6 +70,8 @@ interface Enemy {
   flash: number;
   knockX: number;
   knockY: number;
+  /** a loot box's sparkle, which has to die with it */
+  fx?: Phaser.GameObjects.Image;
 }
 
 interface Proj {
@@ -154,10 +156,17 @@ export class GameScene extends Phaser.Scene {
 
   private owned = new Map<string, Owned>();
   private spawnCd = 0;
-  private miniBossSpawned = false;
-  private bossSpawned = false;
+  /** Which of the brief's seven beats is on screen. The run is a script: every beat ends
+   *  on its own condition, never on the wall clock. */
+  public beat: Beat = 'intro';
+  /** seconds spent in the current beat */
+  public beatT = 0;
   private boss: Enemy | null = null;
   private bossDefeated = false;
+  /** brief note 1: the urgency clock, counting down */
+  public timeLeft = BEATS.timer.seconds;
+  private warned = false;
+  private crateCd = 0;
   private hurtCd = 0;
   /** Kitty Rage: seconds left, the volley clock, and the volley counter its spiral
    *  offset comes from. `evoT > 0` is the whole of "is the rage running". */
@@ -362,6 +371,9 @@ export class GameScene extends Phaser.Scene {
   private begin() {
     this.state = 'play';
     this.hud.hideIntro();
+    this.setBeat('combat');
+    // brief 1: the arena already has loot boxes in it when the player arrives
+    for (let i = 0; i < BEATS.intro.crates; i++) this.spawnCrate();
   }
 
   // ------------------------------------------------------------------ stats
@@ -423,7 +435,14 @@ export class GameScene extends Phaser.Scene {
     const pool = SKILLS.filter((s) => (this.owned.get(s.id)?.level ?? 0) < s.max);
     const weapons = pool.filter((s) => s.kind === 'weapon');
     const out: SkillDef[] = [];
-    if (this.level >= EVO.offerAt && !this.owned.has('evo')) out.push(EVO_SKILL);
+    // Brief 4 is a weapon pick ("Upgrade your weapon to deal more damage!"), so that
+    // hand is all weapons; brief 5 leads with the evo, which is what the cursor points at.
+    if (this.beat === 'evo' && !this.owned.has('evo')) out.push(EVO_SKILL);
+    if (this.beat === 'upgrade') {
+      const three = Phaser.Utils.Array.Shuffle(weapons.slice());
+      while (out.length < 3 && three.length) out.push(three.pop()!);
+      return out.map((def) => ({ def, level: (this.owned.get(def.id)?.level ?? 0) + 1 }));
+    }
     const activeCount = [...this.owned.values()].filter((o) => o.def.kind === 'weapon').length;
     if (activeCount < 4 && weapons.length) out.push(Phaser.Utils.Array.GetRandom(weapons));
     const rest = Phaser.Utils.Array.Shuffle(pool.filter((s) => !out.includes(s)));
@@ -441,18 +460,73 @@ export class GameScene extends Phaser.Scene {
     }
 
     this.elapsed += dt;
+    this.beatT += dt;
+    this.updateTimer(dt);
     this.measurePlane();
     this.updatePlayer(dt);
     this.updateEvo(dt);
     this.updateSpawner(dt);
+    this.updateCrates(dt);
+    if (this.beat === 'combat' && this.beatT >= BEATS.combat.cue) this.setBeat('collect');
     this.updateEnemies(dt);
     this.updateWeapons(dt);
     this.updateProjectiles(dt);
     this.updatePickups(dt);
     this.hud.update(dt);
 
+    // Brief 7: the win is the mini-boss going down, not a clock running out.
     if (this.bossDefeated) this.finishRun(true);
-    if (this.elapsed > RUN_LIMIT) this.finishRun(true);
+  }
+
+  /** Brief note 1: a countdown for urgency, its last `warn` seconds blinking red over a
+   *  dramatic cue. It is a backstop - the mini-boss normally dies with time to spare -
+   *  and running it out still ends on the CTA, because an ad never punishes the player. */
+  private updateTimer(dt: number) {
+    if (this.beat === 'win') return;
+    this.timeLeft = Math.max(0, this.timeLeft - dt);
+    if (!this.warned && this.timeLeft <= BEATS.timer.warn) {
+      this.warned = true;
+      this.sfx('urgent');
+    }
+    if (this.timeLeft <= 0) this.finishRun(this.beat === 'evoAttack');
+  }
+
+  /** Move the script on. Each beat arms what it needs and tells the HUD what to say;
+   *  nothing here reloads or re-creates the arena (brief note 5). */
+  public setBeat(next: Beat) {
+    if (this.beat === next || this.beat === 'win') return;
+    this.beat = next;
+    this.beatT = 0;
+    if (next === 'combat') this.armXpBar();
+    this.hud.onBeat(next);
+    if (next === 'evoAttack') this.startMiniBossWave();
+  }
+
+  /** The XP bar is this ad's pacing device, not the game's curve: it has to reach full
+   *  at the beat the script says - once into the weapon upgrade, once into the evo -
+   *  rather than at the level InGameXpHandler's table would put it. Past the evo it
+   *  falls back to the real curve, which from there only moves the level counter. */
+  private nextXpNeed() {
+    if (this.beat === 'combat' || this.beat === 'collect') return BEATS.combat.xp;
+    if (this.beat === 'upgrade') return BEATS.evo.xp;
+    return xpForLevel(this.level);
+  }
+
+  private armXpBar() {
+    this.xp = 0;
+    this.xpNeed = this.nextXpNeed();
+  }
+
+  /** Brief 5 "Enemies hoarde appears" and 6 "Player fights a mini-boss wave": the horde
+   *  lands with the evo pick and the mini-boss rides in on top of it. */
+  private startMiniBossWave() {
+    const w = BEAT_WAVE.evoAttack;
+    for (let i = 0; i < BEATS.evo.horde; i++) {
+      this.spawn(Phaser.Utils.Array.GetRandom(w.pool), (i / BEATS.evo.horde) * Math.PI * 2);
+    }
+    this.boss = this.spawn(BEATS.evoAttack.miniBoss);
+    this.boss.maxHp = this.boss.hp = this.boss.hp * BEATS.evoAttack.hpMul;
+    this.cameras.main.shake(400, 0.01);
   }
 
   /** Where a screen-pinned object has to sit for the zoomed camera to draw it at `x, y`.
@@ -460,6 +534,14 @@ export class GameScene extends Phaser.Scene {
   public pinPoint(x: number, y: number): [number, number] {
     const cam = this.cameras.main;
     return [cam.width / 2 + (x - cam.width / 2) / cam.zoom, cam.height / 2 + (y - cam.height / 2) / cam.zoom];
+  }
+
+  /** Where the plane is on the canvas, in the layout pixels the HUD is authored in -
+   *  what the intro's finger cue needs to sit on the player rather than near him. */
+  public playerScreen(): [number, number] {
+    const cam = this.cameras.main;
+    const v = cam.worldView;
+    return [(this.player.x + this.plane.dx - v.x) * cam.zoom, (this.player.y + this.plane.dy - v.y) * cam.zoom];
   }
 
   /** Park a screen-pinned object at the screen coordinates it was laid out in, at the
@@ -587,31 +669,53 @@ export class GameScene extends Phaser.Scene {
 
   // ---------------------------------------------------------------- spawning
   private updateSpawner(dt: number) {
-    const wave = WAVES.find((w) => this.elapsed >= w.start && this.elapsed < w.end) ?? WAVES[WAVES.length - 1];
-    this.wave = WAVES.indexOf(wave) + 1;
-
-    if (!this.miniBossSpawned && this.elapsed >= MINIBOSS_AT) {
-      this.miniBossSpawned = true;
-      this.spawn('hammerhead');
-      this.hud.banner('MINI BOSS INCOMING');
-    }
-    if (!this.bossSpawned && this.elapsed >= BOSS_AT) {
-      this.bossSpawned = true;
-      this.boss = this.spawn('boss');
-      this.hud.banner('BOSS INCOMING');
-    }
+    const wave = BEAT_WAVE[this.beat];
+    this.wave = Object.keys(BEAT_WAVE).indexOf(this.beat) + 1;
+    if (!wave.pool.length) return;
 
     this.spawnCd -= dt;
     const rage = this.evoT > 0;
-    if (this.enemies.length >= wave.cap * (rage ? EVO.capMul : 1)) return;
+    // planes only - a parked loot box must not count against the swarm's own cap
+    const planes = this.enemies.reduce((n, e) => n + (e.def.crate ? 0 : 1), 0);
+    if (planes >= wave.cap * (rage ? EVO.capMul : 1)) return;
     // top the arena straight back up when the loadout has cleared it out
-    const starved = this.enemies.length < MIN_ON_SCREEN;
+    const starved = planes < Math.min(MIN_ON_SCREEN, wave.cap * 0.6);
     if (this.spawnCd > 0 && !starved) return;
     this.spawnCd = wave.interval * (rage ? EVO.intervalMul : 1);
     const burst = (starved ? wave.burst + 2 : wave.burst) + (rage ? EVO.burstBonus : 0);
     for (let i = 0; i < burst; i++) {
       this.spawn(Phaser.Utils.Array.GetRandom(wave.pool), (i / burst) * Math.PI * 2);
     }
+  }
+
+  /** Brief 1 and 2: loot boxes stand in the arena from the opening scene, sparkling, and
+   *  burst into gems when the auto-attack finds them. They are topped back up through
+   *  the combat beats so there is always one on screen to shoot. */
+  private updateCrates(dt: number) {
+    if (this.beat === 'win' || this.beat === 'evoAttack') return;
+    const live = this.enemies.reduce((n, e) => n + (e.def.crate ? 1 : 0), 0);
+    if (live >= CRATE.keep) return;
+    this.crateCd -= dt;
+    if (this.crateCd > 0) return;
+    this.crateCd = 2.5;
+    this.spawnCrate();
+  }
+
+  /** Parked in view rather than off the edge: a loot box the player never sees is not in
+   *  the scene the brief describes. */
+  private spawnCrate() {
+    const view = this.cameras.main.worldView;
+    const c = this.spawn('crate');
+    c.spr.x = Phaser.Math.Between(view.left + 60, view.right - 60);
+    c.spr.y = Math.min(Phaser.Math.Between(view.top + 140, view.bottom - 80), FLOOR - 10);
+    c.spr.setDepth(DEPTH.enemy - 1);
+    // the brief's "Loot box / Crate sparkle animation"
+    const glow = this.add.image(0, 0, 'evo_glow').setDepth(DEPTH.enemy - 2).setAlpha(0.6);
+    if (!this.textures.exists('evo_glow')) glow.setVisible(false);
+    glow.setDisplaySize(74, 74);
+    c.fx = glow;
+    this.tweens.add({ targets: glow, alpha: 0.18, scale: glow.scale * 0.72, duration: 620, yoyo: true, repeat: -1 });
+    this.tweens.add({ targets: c.spr, scaleY: c.spr.scaleY * 0.93, duration: 900, yoyo: true, repeat: -1 });
   }
 
   private spawn(type: string, spread = 0): Enemy {
@@ -628,9 +732,11 @@ export class GameScene extends Phaser.Scene {
       .sprite(sx, sy, def.key)
       .setDepth(DEPTH.enemy)
       .setScale(def.scale);
-    // stagger the loop so a wave doesn't flap in lockstep
-    spr.play(def.key);
-    spr.anims.setProgress(Math.random());
+    // stagger the loop so a wave doesn't flap in lockstep; a loot box is one still frame
+    if (this.anims.exists(def.key)) {
+      spr.play(def.key);
+      spr.anims.setProgress(Math.random());
+    }
     // difficulty ramps with elapsed time the way the stage timer does in-game
     const ramp = 1 + this.elapsed / 70;
     const e: Enemy = {
@@ -661,15 +767,18 @@ export class GameScene extends Phaser.Scene {
       e.knockY *= 0.86;
       e.spr.x += (dx / d) * e.def.speed * dt + e.knockX * dt;
       e.spr.y = Math.min(e.spr.y + (dy / d) * e.def.speed * dt + e.knockY * dt, FLOOR);
-      e.spr.setFlipX(dx < 0);
-      e.spr.setRotation(Phaser.Math.Clamp(dy / d, -0.5, 0.5) * (dx < 0 ? -0.35 : 0.35));
+      if (!e.def.crate) {
+        e.spr.setFlipX(dx < 0);
+        e.spr.setRotation(Phaser.Math.Clamp(dy / d, -0.5, 0.5) * (dx < 0 ? -0.35 : 0.35));
+      }
+      e.fx?.setPosition(e.spr.x, e.spr.y);
 
       if (e.flash > 0) {
         e.flash -= dt;
         if (e.flash <= 0) e.spr.clearTint();
       }
 
-      if (d < e.def.radius + PLAYER.radius && this.hurtCd <= 0) {
+      if (e.def.damage && d < e.def.radius + PLAYER.radius && this.hurtCd <= 0) {
         this.damagePlayer(e.def.damage);
         e.knockX = (-dx / d) * 150;
         e.knockY = (-dy / d) * 150;
@@ -723,6 +832,11 @@ export class GameScene extends Phaser.Scene {
     this.player.skeleton.color.set(1, 0.35, 0.3, 1);
     this.time.delayedCall(90, () => this.player.skeleton.color.set(1, 1, 1, 1));
     if (this.hp <= 0) {
+      // brief 7: the ad has one ending and it is the win (BEATS.win.noFail)
+      if (BEATS.win.noFail) {
+        this.hp = 1;
+        return;
+      }
       this.hp = 0;
       this.finishRun(false);
     }
@@ -750,14 +864,24 @@ export class GameScene extends Phaser.Scene {
     const idx = this.enemies.indexOf(e);
     if (idx < 0) return;
     this.enemies.splice(idx, 1);
-    this.kills++;
-    this.sfx('boom');
-
+    e.fx?.destroy();
     const gem = GEMS[e.def.gem];
-    this.dropPickup(e.spr.x, e.spr.y, gem.key, gem.xp, 0, gem.scale);
-    if (Math.random() < 0.04) this.dropPickup(e.spr.x, e.spr.y, 'meat', 0, 18, 0.8);
-    if (e.def.boss) {
-      for (let i = 0; i < 12; i++) {
+
+    if (e.def.crate) {
+      // brief 2: a loot box bursts rather than dies - a handful of gems and its own cue
+      this.sfx('crate');
+      for (let i = 0; i < CRATE.drop; i++) {
+        this.dropPickup(e.spr.x, e.spr.y, gem.key, gem.xp, 0, gem.scale);
+      }
+    } else {
+      this.kills++;
+      this.sfx('boom');
+      this.dropPickup(e.spr.x, e.spr.y, gem.key, gem.xp, 0, gem.scale);
+      if (Math.random() < 0.04) this.dropPickup(e.spr.x, e.spr.y, 'meat', 0, 18, 0.8);
+    }
+    if (e === this.boss) {
+      // brief 6: "Loot particle effects" as the mini-boss goes down
+      for (let i = 0; i < BEATS.evoAttack.lootBurst; i++) {
         const g = GEMS[2];
         this.dropPickup(e.spr.x, e.spr.y, g.key, g.xp, 0, 1);
       }
@@ -839,22 +963,26 @@ export class GameScene extends Phaser.Scene {
     while (this.xp >= this.xpNeed) {
       this.xp -= this.xpNeed;
       this.level++;
-      this.xpNeed = xpForLevel(this.level);
+      this.xpNeed = this.nextXpNeed();
       this.levelUp();
     }
   }
 
   /** Banks the pick rather than opening it: a rage run can clear five levels at once,
    *  and stacking cards over the spray (or over each other) would eat every one of them. */
+  /** The brief scripts exactly two picks: the weapon upgrade (beat 4) and the evo
+   *  (beat 5). Levels banked after that would put a card over the rage and the win. */
   private levelUp() {
     if (this.state === 'over') return;
-    this.pendingLevels = Math.min(this.pendingLevels + 1, 3);
+    if (this.beat !== 'collect' && this.beat !== 'upgrade') return;
+    this.pendingLevels = Math.min(this.pendingLevels + 1, 1);
     this.openPick();
   }
 
   private openPick() {
     if (this.state !== 'play' || this.evoT > 0 || this.pendingLevels <= 0) return;
     this.pendingLevels--;
+    this.setBeat(this.beat === 'collect' ? 'upgrade' : 'evo');
     this.state = 'levelup';
     this.move.set(0, 0);
     this.vel.set(0, 0);
@@ -866,8 +994,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   public closeLevelUp(id: string) {
+    const evo = id === 'evo';
     this.addSkill(id);
     this.state = this.hp > 0 ? 'play' : 'over';
+    // brief 4: the pick lands as a power-up cue; brief 5 has its own dramatic sting,
+    // which startEvo plays.
+    if (!evo) this.sfx('powerup');
+    if (evo) this.setBeat('evoAttack');
+    else this.armXpBar();
     this.openPick();
   }
 
@@ -1307,15 +1441,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ------------------------------------------------------------------- end
+  /** Brief 7: "Wave cleared, mini-boss defeated." The victory overlay plays over the
+   *  arena first - the confetti and the WIN badge land on the game, not on a dialog -
+   *  and the end card follows it. */
   private finishRun(won: boolean) {
     if (this.state === 'over') return;
     if (this.evoT > 0) this.endEvo();
+    this.setBeat('win');
     this.state = 'over';
     this.move.set(0, 0);
     this.joyBase.setVisible(false);
     this.joyKnob.setVisible(false);
-    this.hud.showEnd(won);
-    sdk.finish();
+    // clear what is left of the wave so the win reads as "wave cleared"
+    if (won) for (const e of [...this.enemies]) this.killEnemy(e);
+    this.hud.showVictory(won, () => {
+      this.hud.showEnd(won);
+      sdk.finish();
+    });
   }
 
   // ---------------------------------------------------------------- resize
