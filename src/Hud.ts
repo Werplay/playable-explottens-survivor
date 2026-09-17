@@ -943,9 +943,8 @@ export class Hud {
       shade.fillRect(0, this.h - band + (band * i) / slices, this.w, band / slices + 1);
     }
 
-    // Side by side on one line - that is how a store lockup reads, and stacking them
-    // buries the art. The two badges have different aspects, so they are matched on
-    // height and the pair is centred on their combined width.
+    // Stacked in a column, centred on the wider of the two - the badges have different
+    // aspects, so they are matched on height rather than run to the same width.
     const [google, apple] = btn.getData('pair') as Phaser.GameObjects.Container[];
     const gap = BADGE.gap * this.ui;
     const h = BADGE.h * this.ui;
@@ -956,13 +955,17 @@ export class Hud {
       (c.list[1] as Phaser.GameObjects.Rectangle).setScale(k);
       return img.width * k;
     });
-    const total = widths[0] + widths[1] + gap;
-    google.setPosition(-total / 2 + widths[0] / 2, 0);
-    apple.setPosition(total / 2 - widths[1] / 2, 0);
+    const maxWidth = Math.max(...widths);
+    const totalH = h * 2 + gap;
+    google.setPosition(0, -totalH / 2 + h / 2);
+    apple.setPosition(0, totalH / 2 - h / 2);
+    // Anchored on the same bottom clearance the single-row layout used, measured off
+    // the lower badge rather than the pair's now-taller centre.
+    const margin = Math.max(46, this.h * 0.085);
     btn
-      .setPosition(this.w / 2, this.h - Math.max(46, this.h * 0.085))
+      .setPosition(this.w / 2, this.h - margin - (totalH / 2 - h / 2))
       // 1.04 of headroom for the pulse the inner container is running
-      .setScale(Math.min(1, (Math.min(this.w, artW) - 24) / (total * 1.04)));
+      .setScale(Math.min(1, (Math.min(this.w, artW) - 24) / (maxWidth * 1.04)));
   }
 
   // ----------------------------------------------------------------- resize
