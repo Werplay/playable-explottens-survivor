@@ -108,6 +108,10 @@ export const HUD = {
   /** KIT/Explottens_KIT_Orange_Bars */
   xp: 0xf4981a,
   xpShine: 0xfccc1d,
+  /** How big the whole status assembly - portrait, slab, both bars, cap icons - draws
+   *  against the rest of the HUD. It is a status readout, not the furniture: at 1 it
+   *  was a billboard across the top of the arena. */
+  barScale: 0.76,
   /** the heart at the health bar's cap; the XP bar's cap is the game's own green gem */
   heart: 0xe8354a,
   heartShade: 0x9c1b2c
