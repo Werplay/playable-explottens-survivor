@@ -36,6 +36,8 @@ import horizon from 'assets/horizon.png';
 import foam from 'assets/foam.png';
 import endcard from 'assets/endcard.jpg';
 import endcardBg from 'assets/endcard_bg.jpg';
+import playstore from 'assets/playstore.png';
+import appstore from 'assets/appstore.png';
 
 import gemGreen from 'assets/gem_green.png';
 import gemBlue from 'assets/gem_blue.png';
@@ -293,6 +295,8 @@ export const IMAGES: Record<string, string> = {
   foam,
   endcard,
   endcard_bg: endcardBg,
+  playstore,
+  appstore,
   gem_green: gemGreen,
   gem_blue: gemBlue,
   gem_gold: gemGold,
