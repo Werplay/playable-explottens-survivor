@@ -36,7 +36,7 @@ to the CTA: no cuts, no reloads.
 | 4 | Weapon upgrade | "Upgrade your weapon to deal more damage!" over three weapons; the pick flashes, sparks and glows, and lands on a power-up cue | `BEATS.upgrade`, `Hud.pickFlash` |
 | 5 | Evo upgrade | "Evolve your weapon for unstoppable power!"; the evo is dealt first with an animated cursor on it and is the **only** card that answers — the other two and Refresh are dimmed and dead — and taking it drops the horde and the berserk sting | `BEATS.evo`, `Hud.makeCursor`, `LOCKED_ALPHA` |
 | 6 | Evo attack | "Unleash your evolved attacks!" over the mini-boss wave, the spray auto-targeting, loot scattering as it dies | `BEATS.evoAttack`, `GameScene.startMiniBossWave` |
-| 7 | Win | wave cleared, confetti, a green **WIN** stamp and "Victory! Your hero is unstoppable!", then the end card: app logo and **PLAY NOW** | `BEATS.win`, `Hud.showVictory` |
+| 7 | Win | wave cleared, confetti, a green **WIN** stamp and "Victory! Your hero is unstoppable!", then the end card: the brief's own key art — the Explottens / Survivor lockup and the hero over it — with **PLAY NOW** on top | `BEATS.win`, `Hud.showVictory`, `Hud.showEnd` |
 
 Brief note 1's urgency timer counts **down**, and blinks red over a dramatic cue for
 its last three seconds (`BEATS.timer`). It is a backstop — the mini-boss normally dies
@@ -59,6 +59,7 @@ CTA text and colour, every line of copy — is a field of `BEATS`, `BEAT_WAVE` o
 | Base ATK 10 / HP 100 | `Assets/Scripts/Player/PlayerStats.cs`, `Resources/CSV/SurvivorData/SurvivorLevelUpData.csv` |
 | Skill names, descriptions, icons | `Assets/Prefabs/Skills/**/*.prefab` (`title` / `description` / `mainSprite`) |
 | Wave shape (pool, interval, burst, cap) | `Assets/Scripts/EnemyWaves/EnemyWaveData.cs`, `EnemyWaveController.cs` — the brief's beat picks the row, where the game uses the stage clock |
+| End card key art | **not** the Unity project: the screenshot attached to the brief, which is the one image XObject in its PDF. `tools/build_assets.py` pulls it straight out and ships it as JPEG (a painted illustration full of gradients costs ~4x as much as PNG), plus a 40px copy that is scaled back up to wash the margins on a landscape screen |
 | Loot box art and its pop | `Assets/SpineObjects/Chests/chest.json` (`Cadet` skin), `Audios/SFX/chestOpen.mp3` |
 | Power-up, evolution, urgency and victory cues | `Audios/SFX/powerUpCollected.mp3`, `Audios/BGM/BerserkAudioStart.mp3`, `Audios/SFX/upcomingWave.mp3`, `Audios/SFX/victory.mp3` |
 | Camera field of view and follow | `Assets/Scenes/GameplayScene.unity` (perspective, 60° vertical FOV), `Assets/Scripts/Stage/StageManager.cs` (`SetCamZoom(28, 1.5f)` = 32.3 world units of height), `Assets/Scripts/Camera/CameraMovement.cs` (locked to the plane, not trailing) |
