@@ -87,6 +87,11 @@ export class Hud {
   private bannerText!: Phaser.GameObjects.Text;
   /** the beat's line of copy, and the finger that points at what it is talking about */
   private cue!: Phaser.GameObjects.Container;
+  /** Inner containers carry layout and animation scale. The outer, pinned ones carry
+   *  `1/zoom` from pinTo - writing a scale onto those throws the pin away and the thing
+   *  draws at the wrong size on every canvas whose zoom is not exactly 1. */
+  private cueInner!: Phaser.GameObjects.Container;
+  private introInner!: Phaser.GameObjects.Container;
   private cueText!: Phaser.GameObjects.Text;
   private cueBg!: Phaser.GameObjects.Graphics;
   private cueMsg = '';
@@ -208,7 +213,8 @@ export class Hud {
     const title = this.mkText(30, BEATS.intro.overlay, GOLD).setOrigin(0.5);
     const sub = this.mkText(19, BEATS.intro.hint).setOrigin(0.5);
     s.tweens.add({ targets: title, scale: 1.06, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.intro = s.add.container(0, 0, [title, sub]).setScrollFactor(0).setDepth(D.overlay);
+    this.introInner = s.add.container(0, 0, [title, sub]);
+    this.intro = s.add.container(0, 0, [this.introInner]).setScrollFactor(0).setDepth(D.overlay);
 
     const pad = s.add.circle(0, 0, 30, 0xffffff, 0.22);
     const tip = s.add.circle(0, 0, 15, 0xffffff, 0.92);
@@ -224,11 +230,8 @@ export class Hud {
     // zero-alpha rectangle is the panel's real size, for anything that asks.
     this.cueSize = s.add.rectangle(0, 0, 10, 10, 0x000000, 0).setOrigin(0.5);
     this.cueText = this.mkText(21, '', '#ffffff').setOrigin(0.5);
-    this.cue = s.add
-      .container(0, 0, [this.cueBg, this.cueSize, this.cueText])
-      .setScrollFactor(0)
-      .setDepth(D.cue)
-      .setAlpha(0);
+    this.cueInner = s.add.container(0, 0, [this.cueBg, this.cueSize, this.cueText]);
+    this.cue = s.add.container(0, 0, [this.cueInner]).setScrollFactor(0).setDepth(D.cue).setAlpha(0);
 
     this.pinScreen(this.root);
     this.pinScreen(this.intro);
@@ -248,9 +251,10 @@ export class Hud {
     this.cueOn = true;
     this.cueMsg = text;
     this.drawCue();
-    s.tweens.killTweensOf(this.cue);
-    this.cue.setScale(0.9);
-    s.tweens.add({ targets: this.cue, alpha: 1, scale: 1, duration: 220, ease: 'Back.easeOut' });
+    s.tweens.killTweensOf(this.cueInner);
+    this.cueInner.setScale(0.9);
+    s.tweens.add({ targets: this.cueInner, scale: 1, duration: 220, ease: 'Back.easeOut' });
+    s.tweens.add({ targets: this.cue, alpha: 1, duration: 220 });
   }
 
   /** The cue's panel is drawn around its text, so it has to be redrawn whenever either
@@ -623,7 +627,10 @@ export class Hud {
     const d = 62 * u; // portrait diameter
     const cx = pad + d / 2;
     const cy = 46 * u;
-    const x0 = cx + d / 2 - 6 * u; // the slab runs out from under the portrait
+    // Leave a deliberate gutter after the portrait badge. Previously the slab tucked
+    // underneath it, which read as one crowded shape instead of the in-game badge next
+    // to the health / XP unit.
+    const x0 = cx + d / 2 + 8 * u;
     const x1 = width - pad;
     const top = cy - 23 * u;
     const h = 46 * u;
@@ -685,7 +692,7 @@ export class Hud {
 
   /** Height of the heading band - the beat cue when one is up, otherwise the rule. */
   private headBand() {
-    return this.cueOn ? this.cueH + 16 * this.ui : 46 * this.ui;
+    return this.cueOn ? this.cueH + 24 * this.ui : 46 * this.ui;
   }
 
   /** Uniform scale that fits the card to the width and the stack to what is left of the
@@ -693,7 +700,9 @@ export class Hud {
   private cardScale() {
     const room = this.h - this.panelTop() - this.headBand() - 96 * this.ui;
     const perCard = (room - 2 * CARD.gap * this.ui) / 3;
-    return Phaser.Math.Clamp(Math.min((this.w - 32) / CARD.w, perCard / CARD.h), 0.3, 1);
+    // Capped at the UI scale, not at 1: on a tablet the HUD grows and a card stack still
+    // pinned to its phone size reads as a postage stamp in the middle of the screen.
+    return Phaser.Math.Clamp(Math.min((this.w - 32 * this.ui) / CARD.w, perCard / CARD.h), 0.3, this.ui);
   }
 
   private layoutOverlay(header: Phaser.GameObjects.Container, refresh: Phaser.GameObjects.Container) {
@@ -952,11 +961,11 @@ export class Hud {
     this.s.pinTo(this.intro, width / 2, Phaser.Math.Clamp(height * 0.3, hintTop + 40 * u, height * 0.55));
     // "Survive, Upgrade, Evolve!" is authored for a 400px phone and is wider than a
     // small one; the whole overlay shrinks rather than the headline wrapping mid-word.
-    const [introTitle, introSub] = this.intro.list as Phaser.GameObjects.Text[];
+    const [introTitle, introSub] = this.introInner.list as Phaser.GameObjects.Text[];
     introTitle.setPosition(0, 0);
     introSub.setPosition(0, introTitle.height * 0.72 + 8 * u);
-    const introW = Math.max(...this.intro.list.map((o) => (o as Phaser.GameObjects.Text).width || 0));
-    this.intro.setScale(Math.min(1, (width - 28) / Math.max(1, introW)));
+    const introW = Math.max(...this.introInner.list.map((o) => (o as Phaser.GameObjects.Text).width || 0));
+    this.introInner.setScale(Math.min(1, (width - 28) / Math.max(1, introW)));
 
     if (this.overlay?.getData('end')) {
       this.layoutEnd();
