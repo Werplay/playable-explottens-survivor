@@ -8,6 +8,8 @@ import type { GameScene } from './GameScene';
 const D = { hud: 100, overlay: 200, cue: 300 };
 /** How far a card that cannot be taken is faded back. */
 const LOCKED_ALPHA = 0.42;
+/** One store badge, at the size the pair is laid out from. */
+const BADGE = { w: 168, h: 52 };
 const GOLD = '#ffd34d';
 
 /** Colours read off the in-game "Select a Skill" panel. Weapons glow green, passives
@@ -70,9 +72,6 @@ export class Hud {
   private overlay?: Phaser.GameObjects.Container;
   private relayout?: () => void;
   private bannerText!: Phaser.GameObjects.Text;
-  /** brief 2: the "Attack -> Loot -> Upgrade" panel */
-  private steps!: Phaser.GameObjects.Container;
-  private stepLabels: Phaser.GameObjects.Text[] = [];
   /** the beat's line of copy, and the finger that points at what it is talking about */
   private cue!: Phaser.GameObjects.Container;
   private cueText!: Phaser.GameObjects.Text;
@@ -161,20 +160,6 @@ export class Hud {
     this.xpGlow = s.add.graphics().setVisible(false);
     this.root.add(this.xpGlow);
 
-    // brief 2: "Small UI panel shows: Attack -> Loot -> Upgrade"
-    this.steps = s.add.container(0, 0).setVisible(false);
-    BEATS.combat.steps.forEach((name, i) => {
-      if (i) {
-        const arrow = s.add.text(0, 0, '>', this.label(15, '#7c89a8')).setOrigin(0.5);
-        arrow.setData('arrow', i);
-        this.steps.add(arrow);
-      }
-      const t = s.add.text(0, 0, name, this.label(15, '#8d99b5')).setOrigin(0.5);
-      this.stepLabels.push(t);
-      this.steps.add(t);
-    });
-    this.root.add(this.steps);
-
     // brief 1: the text overlay, and the finger that taps on the player himself
     const title = s.add.text(0, 0, BEATS.intro.overlay, this.label(30, GOLD)).setOrigin(0.5);
     const sub = s.add.text(0, 40, BEATS.intro.hint, this.label(19)).setOrigin(0.5);
@@ -199,12 +184,19 @@ export class Hud {
     this.pinScreen(this.cue);
   }
 
+  /** Shrink a laid-out element until it fits the canvas, never enlarging it. Type here
+   *  is authored at one size for a 400px-wide phone; a 280px one still has to read it. */
+  private fit(o: Phaser.GameObjects.Components.Transform & { width: number }, margin = 24) {
+    o.setScale(Math.min(1, (this.w - margin) / Math.max(1, o.width)));
+  }
+
   /** Brief note 4: a cue lives until its action is done, then fades - never lingers. */
   private say(text: string) {
     const s = this.s;
-    this.cueText.setText(text);
-    const w = this.cueText.width + 44;
-    const h = this.cueText.height + 22;
+    this.cueText.setScale(1).setText(text);
+    this.fit(this.cueText, 52);
+    const w = this.cueText.width * this.cueText.scaleX + 44;
+    const h = this.cueText.height * this.cueText.scaleY + 22;
     this.cueBg.clear();
     this.cueBg.fillStyle(0x0d2136, 0.86).fillRoundedRect(-w / 2, -h / 2, w, h, 12);
     this.cueBg.lineStyle(3, 0xffc93c, 0.9).strokeRoundedRect(-w / 2, -h / 2, w, h, 12);
@@ -221,13 +213,6 @@ export class Hud {
    *  the line is about. */
   onBeat(beat: Beat) {
     this.beat = beat;
-    const lit = { combat: 0, collect: 1, upgrade: 2, evo: 2 }[beat as 'combat'];
-    this.steps.setVisible(lit !== undefined);
-    this.stepLabels.forEach((t, i) => {
-      const on = i === lit;
-      t.setColor(on ? GOLD : '#8d99b5').setScale(on ? 1.18 : 1);
-    });
-
     if (beat === 'collect') {
       this.say(BEATS.combat.text);
       this.xpGlow.setVisible(true);
@@ -241,7 +226,6 @@ export class Hud {
       this.s.time.delayedCall(2600, () => this.hush());
     } else if (beat === 'win') {
       this.hush();
-      this.steps.setVisible(false);
       this.xpGlow.setVisible(false);
     }
   }
@@ -266,8 +250,11 @@ export class Hud {
   }
 
   banner(text: string) {
-    this.bannerText.setText(text).setAlpha(1).setScale(0.6);
-    this.s.tweens.add({ targets: this.bannerText, scale: 1, duration: 260, ease: 'Back.easeOut' });
+    this.bannerText.setText(text).setAlpha(1).setScale(1);
+    this.fit(this.bannerText);
+    const to = this.bannerText.scaleX;
+    this.bannerText.setScale(to * 0.6);
+    this.s.tweens.add({ targets: this.bannerText, scale: to, duration: 260, ease: 'Back.easeOut' });
     this.s.tweens.add({ targets: this.bannerText, alpha: 0, delay: 1400, duration: 500 });
   }
 
@@ -592,6 +579,72 @@ export class Hud {
     this.lvlText.setPosition(cx, cy + d / 2 - 7);
   }
 
+  /** A store badge: the black pill, the store's mark, and its two lines of type.
+   *
+   *  NOTE: the marks here are drawn stand-ins. Google and Apple both require their own
+   *  supplied badge artwork, used unmodified, so before this ships the two glyphs should
+   *  be swapped for the official files - drop them in as `badge_google` / `badge_apple`
+   *  images and this method becomes one `s.add.image` each. */
+  private makeStoreBadge(kind: 'google' | 'apple') {
+    const s = this.s;
+    const w = BADGE.w;
+    const h = BADGE.h;
+    const g = s.add.graphics();
+    g.fillStyle(0x000000, 1).fillRoundedRect(-w / 2, -h / 2, w, h, 9);
+    g.lineStyle(1.5, 0xa6a6a6, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, 9);
+
+    const gx = -w / 2 + 20;
+    const mark = s.add.graphics();
+    if (kind === 'google') {
+      // the play triangle: a right-pointing wedge quartered about its fold
+      const r = 13;
+      const ax = gx - r * 0.52;
+      const top = -r;
+      const bot = r;
+      const mid = 0;
+      const tip = gx + r * 0.72;
+      const fold = gx + r * 0.12;
+      const tri = (col: number, pts: number[][]) => {
+        mark.fillStyle(col, 1).fillTriangle(pts[0][0], pts[0][1], pts[1][0], pts[1][1], pts[2][0], pts[2][1]);
+      };
+      tri(0x00a0ff, [[ax, top], [ax, mid], [fold, mid]]);
+      tri(0x00e676, [[ax, mid], [ax, bot], [fold, mid]]);
+      tri(0xffce00, [[ax, top], [tip, mid], [fold, mid]]);
+      tri(0xff3a44, [[ax, bot], [tip, mid], [fold, mid]]);
+    } else {
+      // the apple: a rounded body with a bite out of its right side, and a leaf
+      mark.fillStyle(0xffffff, 1);
+      mark.fillCircle(gx - 4.5, 1, 8.5);
+      mark.fillCircle(gx + 4.5, 1, 8.5);
+      mark.fillRect(gx - 9, -3, 18, 11);
+      mark.fillCircle(gx - 3.5, 7, 6.5);
+      mark.fillCircle(gx + 3.5, 7, 6.5);
+      mark.fillStyle(0x000000, 1).fillCircle(gx + 13, -7, 7); // the bite
+      mark.fillStyle(0xffffff, 1);
+      mark.fillEllipse(gx + 2.5, -10.5, 5, 8); // the leaf
+    }
+
+    const tx = gx + 20;
+    const small = s.add
+      .text(tx, -h * 0.2, kind === 'google' ? 'GET IT ON' : 'Download on the', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '11px',
+        color: '#ffffff'
+      })
+      .setOrigin(0, 0.5);
+    const big = s.add
+      .text(tx - 1, h * 0.19, kind === 'google' ? 'Google Play' : 'App Store', {
+        fontFamily: 'Arial, Helvetica, sans-serif',
+        fontSize: '21px',
+        color: '#ffffff'
+      })
+      .setOrigin(0, 0.5);
+
+    const hit = s.add.rectangle(0, 0, w, h, 0x000000, 0).setOrigin(0.5);
+    hit.setInteractive({ useHandCursor: true }).on('pointerdown', () => sdk.install());
+    return s.add.container(0, 0, [g, mark, small, big, hit]);
+  }
+
   /** Header tucks in on a short screen so three cards still fit under it. */
   private headerY() {
     return Phaser.Math.Clamp(this.h * 0.14, 40, 110);
@@ -710,6 +763,10 @@ export class Hud {
   showEnd(won: boolean) {
     const s = this.s;
     this.closeLevelUp();
+    // nothing from the run belongs over the card
+    this.hush();
+    this.xpGlow.setVisible(false);
+    this.bannerText.setAlpha(0);
     const c = s.add.container(0, 0).setScrollFactor(0).setDepth(D.overlay);
 
     // Only ever seen in landscape, where the art is shown whole rather than cropped: a
@@ -721,14 +778,19 @@ export class Hud {
     // as a box sitting on the art, which is exactly what this must not look like.
     const shade = s.add.graphics();
 
-    const btnBg = s.add.rectangle(0, 0, 300, 84, BEATS.win.ctaColor).setOrigin(0.5);
-    btnBg.setStrokeStyle(5, 0x1c6d22);
-    const btnText = s.add.text(0, 0, BEATS.win.cta, this.label(34)).setOrigin(0.5);
-    const btn = s.add.container(0, 0, [btnBg, btnText]);
-    s.tweens.add({ targets: btn, scale: 1.07, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    btnBg.setInteractive({ useHandCursor: true }).on('pointerdown', () => sdk.install());
+    // Both badges do the same thing: hand off to the network's own install call. The
+    // store is the network's to choose - a playable must never carry its own store URL.
+    const google = this.makeStoreBadge('google');
+    const apple = this.makeStoreBadge('apple');
+    // Nested: the inner container carries the pulse, the outer one the layout scale. A
+    // tween writes an absolute scale, so pulsing the laid-out container throws its
+    // fitted size away and the badges run off the sides of a narrow screen.
+    const pulse = s.add.container(0, 0, [google, apple]);
+    const btn = s.add.container(0, 0, [pulse]);
+    s.tweens.add({ targets: pulse, scale: 1.04, duration: 760, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
 
     c.add([backdrop, art, shade, btn]);
+    btn.setData('pair', [google, apple]);
     c.setData('end', { backdrop, art, shade, btn });
     this.overlay = c;
     this.pinScreen(c);
@@ -777,7 +839,16 @@ export class Hud {
       shade.fillRect(0, this.h - band + (band * i) / slices, this.w, band / slices + 1);
     }
 
-    btn.setPosition(this.w / 2, this.h - Math.max(58, this.h * 0.1)).setScale(Math.min(1, this.w / 380));
+    // side by side, shrunk to fit rather than wrapped - two badges on one line is how a
+    // store lockup reads, and stacking them buries the art
+    const [google, apple] = btn.getData('pair') as Phaser.GameObjects.Container[];
+    const gap = 12;
+    google.setPosition(-(BADGE.w + gap) / 2, 0);
+    apple.setPosition((BADGE.w + gap) / 2, 0);
+    btn
+      .setPosition(this.w / 2, this.h - Math.max(46, this.h * 0.085))
+      // 1.04 of headroom for the pulse the inner container is running
+      .setScale(Math.min(1, (this.w - 28) / ((BADGE.w * 2 + gap) * 1.04)));
   }
 
   // ----------------------------------------------------------------- resize
@@ -800,17 +871,13 @@ export class Hud {
     this.bossBar.setPosition(width / 2, 132);
 
     // brief 2: the Attack -> Loot -> Upgrade panel, centred under the run stats
-    this.steps.setPosition(width / 2, 124);
-    const gap = Math.min(78, (width - 60) / 3);
-    this.stepLabels.forEach((t, i) => t.setPosition((i - 1) * gap, 0));
-    for (const child of this.steps.list) {
-      const arrow = (child as Phaser.GameObjects.Text).getData?.('arrow');
-      if (arrow) (child as Phaser.GameObjects.Text).setPosition((arrow - 1.5) * gap, 0);
-    }
-
     // the beat cue sits above the card stack, which is centred
     this.cue.setPosition(width / 2, Math.max(150, height * 0.2));
     this.intro.setPosition(width / 2, height * 0.24);
+    // "Survive, Upgrade, Evolve!" is authored for a 400px phone and is wider than a
+    // small one; the whole overlay shrinks rather than the headline wrapping mid-word.
+    const introW = Math.max(...this.intro.list.map((o) => (o as Phaser.GameObjects.Text).width || 0));
+    this.intro.setScale(Math.min(1, (width - 28) / Math.max(1, introW)));
 
     if (this.overlay?.getData('end')) {
       this.layoutEnd();

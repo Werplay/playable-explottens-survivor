@@ -345,8 +345,11 @@ export const PLAYER = {
    *  well off the skeleton origin, so measuring from the origin takes gems the plane is
    *  visibly nowhere near, and misses ones it is sitting on. */
   grabRadius: 26,
-  /** Reach of Catnip Magnet, per level. Zero without it: nothing drifts to the plane on
-   *  its own, which is the whole point of `grabRadius`. */
+  /** How near an item has to be before it starts drifting to the plane. Just outside
+   *  `grabRadius`, so loot snaps in once the plane is practically on it and never comes
+   *  at you from across the arena. */
+  attractRadius: 52,
+  /** Extra reach per level of Catnip Magnet, on top of `attractRadius`. */
   pickupRadius: 240,
   accel: 14, // how fast velocity chases the joystick vector
   hurtCooldown: 0.7 // i-frames after a collision
@@ -419,8 +422,6 @@ export const BEATS = {
   },
   /** 2. Combat loop, and 3. the gem cue it runs into */
   combat: {
-    /** the brief's "Small UI panel shows: Attack -> Loot -> Upgrade" */
-    steps: ['ATTACK', 'LOOT', 'UPGRADE'],
     /** seconds of fighting before "Collect gems!" comes up */
     cue: 2.5,
     text: 'Collect gems!',
@@ -456,8 +457,6 @@ export const BEATS = {
   win: {
     overlay: 'Victory! Your hero is unstoppable!',
     badge: 'WIN',
-    cta: 'PLAY NOW',
-    ctaColor: 0x35c93f,
     confetti: 110,
     /** The brief describes one ending, and it is the win. The health bar still drops -
      *  brief 2 wants it visible and it is where the tension lives - but the run cannot

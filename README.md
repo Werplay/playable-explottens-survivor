@@ -31,12 +31,12 @@ to the CTA: no cuts, no reloads.
 | # | Beat | What the player sees | Where |
 |---|---|---|---|
 | 1 | Intro | "Survive, Upgrade, Evolve!" over a small arena already holding enemies **and loot boxes**; a finger cue rides on the plane until the first swipe | `BEATS.intro`, `Hud.build`, `GameScene.begin` |
-| 2 | Combat loop | auto-attack, health bar, gems on every kill, and the **Attack → Loot → Upgrade** panel tracking the beat; loot boxes sparkle and burst when shot | `BEATS.combat`, `Hud.onBeat`, `GameScene.updateCrates` |
+| 2 | Combat loop | auto-attack, health bar, gems on every kill; loot boxes sparkle and burst when shot | `BEATS.combat`, `GameScene.updateCrates` |
 | 3 | Single attack weapon | "Collect gems!" with the XP bar and the ability menu ringed while it is up | `BEATS.combat.text`, `Hud.update` |
 | 4 | Weapon upgrade | "Upgrade your weapon to deal more damage!" over three weapons; the pick flashes, sparks and glows, and lands on a power-up cue | `BEATS.upgrade`, `Hud.pickFlash` |
 | 5 | Evo upgrade | "Evolve your weapon for unstoppable power!"; the evo is dealt first with an animated cursor on it and is the **only** card that answers — the other two and Refresh are dimmed and dead — and taking it drops the horde and the berserk sting | `BEATS.evo`, `Hud.makeCursor`, `LOCKED_ALPHA` |
 | 6 | Evo attack | "Unleash your evolved attacks!" over the mini-boss wave, the spray auto-targeting, loot scattering as it dies | `BEATS.evoAttack`, `GameScene.startMiniBossWave` |
-| 7 | Win | wave cleared, confetti, a green **WIN** stamp and "Victory! Your hero is unstoppable!", then the end card: the brief's own key art — the Explottens / Survivor lockup and the hero over it — with **PLAY NOW** on top | `BEATS.win`, `Hud.showVictory`, `Hud.showEnd` |
+| 7 | Win | wave cleared, confetti, a green **WIN** stamp and "Victory! Your hero is unstoppable!", then the end card: the brief's own key art — the Explottens / Survivor lockup and the hero over it — with the **Google Play** and **App Store** badges on top | `BEATS.win`, `Hud.showVictory`, `Hud.showEnd` |
 
 Brief note 1's urgency timer counts **down**, and blinks red over a dramatic cue for
 its last three seconds (`BEATS.timer`). It is a backstop — the mini-boss normally dies
@@ -47,8 +47,17 @@ the brief describes one ending and it is the win.
 
 Everything the brief lists under **Editable Elements** — enemy counts, loot type,
 weapon and skill pools, upgrade and evolution visuals, boss enemy type, loot boxes,
-CTA text and colour, every line of copy — is a field of `BEATS`, `BEAT_WAVE` or
-`CRATE` in `src/data.ts`.
+every line of copy — is a field of `BEATS`, `BEAT_WAVE` or `CRATE` in `src/data.ts`.
+
+Two deliberate departures from the brief, both asked for after it: the
+**Attack → Loot → Upgrade** panel (brief 2) is gone, and the CTA is the two store
+badges rather than a **PLAY NOW** button (brief 7). Both badges call `sdk.install()` —
+a playable must never carry its own store URL, and the network picks the store.
+
+> **The badge artwork is a drawn stand-in.** Google and Apple both require their own
+> supplied badge files, used unmodified. Before this ships, swap the two glyphs in
+> `Hud.makeStoreBadge` for the official assets — drop them in as `badge_google` /
+> `badge_apple` images and each badge becomes a single `s.add.image`.
 
 ## What came from the Unity project
 
@@ -150,7 +159,9 @@ deliberately different and are marked as such in `src/data.ts`:
   plane's length, so measuring from the origin both takes gems the plane is visibly clear
   of and misses ones it is sitting on. `PLAYER.pickupRadius` is now Catnip Magnet's reach
   *per level* and is zero without it: nothing drifts to the plane on its own. The game
-  itself magnets loot in from a wide radius; here you fly onto it.
+  itself magnets loot in from a wide radius; here `PLAYER.attractRadius` (52px, about one
+  plane length) is all the reach there is without the passive — loot drifts in once you
+  are practically on it, and sits where it fell otherwise.
 - `BEATS.combat.maxWait` / `BEATS.evo.maxWait` top the XP bar up once a beat has run
   long. With loot taken only on contact a player who ignores the gems can stall a beat
   indefinitely, and the brief's seven beats have to land inside `BEATS.timer`.

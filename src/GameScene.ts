@@ -391,10 +391,11 @@ export class GameScene extends Phaser.Scene {
   private get armorMul() {
     return Math.pow(0.9, this.lvlOf('armor'));
   }
-  /** Zero until Catnip Magnet is picked up ("Item loot range +100%"). Loot is taken by
-   *  flying onto it; the passive is what makes it come to you. */
+  /** Only reaches as far as `attractRadius` until Catnip Magnet is picked up ("Item loot
+   *  range +100%"): loot drifts in when the plane is already on top of it, and the
+   *  passive is what makes it come to you from further out. */
   private get magnetRadius() {
-    return PLAYER.pickupRadius * this.lvlOf('magnet');
+    return PLAYER.attractRadius + PLAYER.pickupRadius * this.lvlOf('magnet');
   }
   private get xpMul() {
     return Math.pow(1.08, this.lvlOf('xp'));
