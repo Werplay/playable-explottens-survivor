@@ -955,9 +955,11 @@ export class Hud {
   resize(width: number, height: number) {
     this.w = width;
     this.h = height;
-    // The short side is what decides it: a 1280x800 tablet and a 280x480 phone should
-    // give the HUD the same share of the screen, not the same pixel count.
-    this.ui = Phaser.Math.Clamp(Math.min(width, height) / 400, 0.7, 2.2);
+    // The short side decides the baseline. In a wide viewport, though, a full phone HUD
+    // scale dominates the arena (especially on tablets), so it uses a quieter landscape
+    // cap while the upgrade panel keeps its own width-driven layout.
+    const landscape = width > height * 1.2;
+    this.ui = Phaser.Math.Clamp(Math.min(width, height) / (landscape ? 560 : 400), 0.7, landscape ? 1.35 : 2.2);
     const u = this.ui;
     this.restyle();
     this.screens = this.screens.filter((c) => c.scene);
