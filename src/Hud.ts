@@ -32,6 +32,10 @@ const CARD = {
   pipOff: 0x8c93a8
 };
 
+/** Refresh button's authored size (see makeRefresh) - shared with cardScale/layoutOverlay
+ *  so the fit budget and the drawn button never drift apart. */
+const REFRESH_H = 62;
+
 /** A container's scrollFactor drives rendering but input hit-testing reads each
  *  child's own value — so pin the whole subtree or taps land camera-scroll away. */
 function pin(root: Phaser.GameObjects.GameObject) {
@@ -77,8 +81,6 @@ export class Hud {
   private xpGem!: Phaser.GameObjects.Image;
   /** bottom edge of the bar slab, in canvas px - everything below it stacks from here */
   private barsBottom = 70;
-  /** bottom edge of the whole run HUD (bars, badge, stats), for the panel to clear */
-  private hudBottom = 110;
   private loadout!: Phaser.GameObjects.Container;
 
   private intro!: Phaser.GameObjects.Container;
@@ -523,7 +525,7 @@ export class Hud {
   private makeRefresh() {
     const s = this.s;
     const w = 260;
-    const h = 62;
+    const h = REFRESH_H;
     const g = s.add.graphics();
     g.fillStyle(0xe09b00, 1).fillRoundedRect(-w / 2, -h / 2 + 6, w, h, 12);
     g.fillStyle(0xffc83d, 1).fillRoundedRect(-w / 2, -h / 2, w, h - 4, 12);
@@ -567,9 +569,11 @@ export class Hud {
 
     g.lineStyle(4, tone.glow, 1).strokeRoundedRect(x0, y0, w, h, CARD.radius);
 
-    // icon slot
+    // icon slot. A dedicated gutter under the frame holds the rarity pips, so they read
+    // as their own row rather than sitting on top of the artwork.
     const pad = h * 0.1;
-    const slot = h - pad * 2;
+    const pipGutter = h * 0.16;
+    const slot = h - pad - pipGutter;
     const sx = x0 + pad;
     const frame = s.add.graphics();
     frame.fillStyle(CARD.slot, 1).fillRoundedRect(sx, y0 + pad, slot, slot, 12);
@@ -581,9 +585,10 @@ export class Hud {
     const pips = s.add.graphics();
     const total = Math.min(def.max, 5);
     const step = Math.min(18, (wedgeW - slant - pad * 2) / total);
+    const pipY = y0 + pad + slot + pipGutter / 2;
     for (let i = 0; i < total; i++) {
       const on = i < level;
-      this.diamond(pips, sx + step / 2 + i * step, y0 + h - pad * 0.9, 7, on ? CARD.pipOn : CARD.pipOff, 1);
+      this.diamond(pips, sx + step / 2 + i * step, pipY, 7, on ? CARD.pipOn : CARD.pipOff, 1);
     }
 
     const textX = x0 + pad * 2 + slot;
@@ -623,8 +628,13 @@ export class Hud {
   /** The player HUD the game draws: the portrait sunk into the left end of a red slab,
    *  the level on its rim, and health over XP in two troughs cut out of it. */
   private layoutBars(width: number, pad: number) {
-    // The whole assembly draws at its own scale, a notch under the rest of the HUD.
-    const u = this.ui * HUD.barScale;
+    // A phone HUD can use the available width. On a wide canvas that same treatment
+    // becomes a billboard across the playfield, so cap the status slab and leave the
+    // right side open for the game action.
+    const landscape = width > this.h * 1.2;
+    // The whole assembly draws at its own scale, a notch under the rest of the HUD -
+    // and a notch further still in landscape, which is short on height, not width.
+    const u = this.ui * (landscape ? HUD.barScaleLandscape : HUD.barScale);
     const d = 62 * u; // portrait diameter
     const cx = pad + d / 2;
     const cy = 46 * u;
@@ -632,11 +642,7 @@ export class Hud {
     // underneath it, which read as one crowded shape instead of the in-game badge next
     // to the health / XP unit.
     const x0 = cx + d / 2 + 8 * u;
-    // A phone HUD can use the available width. On a wide canvas that same treatment
-    // becomes a billboard across the playfield, so cap the status slab and leave the
-    // right side open for the game action.
-    const landscape = width > this.h * 1.2;
-    const x1 = landscape ? Math.min(width - pad, x0 + width * 0.56) : width - pad;
+    const x1 = landscape ? Math.min(width - pad, x0 + width * HUD.barWidthLandscape) : width - pad;
     const top = cy - 23 * u;
     const h = 46 * u;
     const barX = x0 + 22 * u; // clear of the cap icons
@@ -690,9 +696,11 @@ export class Hud {
     return s.add.container(0, 0, [img, hit]);
   }
 
-  /** Top of the panel's own stack: under the run HUD, never on it. */
+  /** Top of the panel's own stack. The panel is a modal over a full-screen dim, sitting
+   *  above the run HUD in depth - the HUD is already covered, not something to clear -
+   *  so this is just a safe inset off the top edge. */
   private panelTop() {
-    return Math.max(Phaser.Math.Clamp(this.h * 0.12, 30, 110), this.hudBottom + 10 * this.ui);
+    return Phaser.Math.Clamp(this.h * 0.05, 16, 50);
   }
 
   /** Height of the heading band - the beat cue when one is up, otherwise the rule. */
@@ -702,17 +710,17 @@ export class Hud {
     return this.cueOn ? this.cueH + 26 * this.ui : 46 * this.ui;
   }
 
-  /** Height reserved at the foot of the panel for Refresh. */
-  private footerBand() {
-    return 78 * this.ui;
-  }
-
-  /** Uniform scale that fits the card to the width and the stack to what is left of the
-   *  height once the HUD, the heading band and Refresh have taken their share. */
+  /** Uniform scale that fits the card to the width and the cards-plus-Refresh group to
+   *  what is left of the height once the HUD and the heading band have taken their
+   *  share. Mirrors layoutOverlay()'s own budget - cards, their gaps, the gutter before
+   *  Refresh, and Refresh's own height - so a short (landscape) screen shrinks the whole
+   *  group instead of fitting the cards and clipping Refresh off the bottom. */
   private cardScale() {
-    const room = this.h - this.panelTop() - this.headBand() - this.footerBand();
+    const top = this.panelTop() + this.headBand();
+    const room = this.h - top - this.panelTop();
     const widthScale = (this.w - 32 * this.ui) / CARD.w;
-    const heightScale = room / (3 * CARD.h + 2 * CARD.gap);
+    const unitsPerScale = 3 * CARD.h + 2 * CARD.gap + CARD.gap * 1.6 + REFRESH_H;
+    const heightScale = room / unitsPerScale;
     // Capped at the UI scale, not at 1: on a tablet the HUD grows and a card stack still
     // pinned to its phone size reads as a postage stamp in the middle of the screen.
     return Phaser.Math.Clamp(Math.min(widthScale, heightScale), 0.3, this.ui);
@@ -725,36 +733,37 @@ export class Hud {
 
     const k = this.cardScale();
     const cardH = CARD.h * k;
-    // Each card is its own choice, so they are set apart rather than run together as one
-    // slab - the gap scales with the cards so the rhythm holds at every canvas size.
-    const gap = CARD.gap * k;
-    const span = 3 * cardH + 2 * gap;
 
     // One vertical stack in every orientation: the run HUD, then the heading band - the
     // beat cue when one is up, the "SELECT A SKILL" rule otherwise - then the three
     // cards, then Refresh. A wide screen shows the same column a phone does, only
     // smaller; the two-column grid it used to get read as a different screen.
     const u = this.ui;
-    const footer = this.footerBand();
     const stackTop = this.panelTop();
     const band = this.headBand();
     const top = stackTop + band;
-    // Refresh owns the footer band; the cards are centred in everything between the
-    // heading and it. Centring against `h` instead, with Refresh then placed relative to
-    // the stack, left the cards hugging the heading with a pool of dead space under them.
-    const bottom = this.h - footer;
-    const centre = Phaser.Math.Clamp(
-      (top + bottom) / 2,
-      top + span / 2,
-      Math.max(top + span / 2, bottom - span / 2)
-    );
+    // Each card is its own choice, so they are set apart rather than run together as one
+    // slab - but only by a small fixed gap, not one stretched to fill the leftover room
+    // (that read as the cards drifting apart instead of one grouped choice).
+    const gap = CARD.gap * k;
+    const span = 3 * cardH + 2 * gap;
+    // Refresh joins the same gutter as its own group, then the whole group - cards and
+    // Refresh together - centres in the room under the heading, mirroring the inset
+    // panelTop() leaves at the top so the block reads as centred on the panel, not just
+    // hugging whichever edge.
+    const refreshGap = Math.max(gap * 1.6, 20 * u);
+    const refreshH = REFRESH_H * k;
+    const groupH = span + refreshGap + refreshH;
+    const room = Math.max(0, this.h - stackTop - top);
+    const groupTop = top + Math.max(0, (room - groupH) / 2);
+    const centre = groupTop + span / 2;
     const headingY = stackTop + band / 2;
     // `cue` is its own screen-pinned root, unlike the cards which are children of the
     // panel. Place it through pinTo so rotation cannot apply the new camera zoom twice.
     if (this.cueOn) this.s.pinTo(this.cue, this.w / 2, headingY);
     header.setPosition(this.w / 2, headingY).setScale(k);
 
-    refresh.setPosition(this.w / 2, bottom + footer / 2).setScale(k);
+    refresh.setPosition(this.w / 2, groupTop + span + refreshGap + refreshH / 2).setScale(k);
 
     for (let i = 3; i < c.length; i++) {
       const card = c.getAt(i) as Phaser.GameObjects.Container;
@@ -850,10 +859,13 @@ export class Hud {
     this.bannerText.setAlpha(0);
     const c = s.add.container(0, 0).setScrollFactor(0).setDepth(D.overlay);
 
-    // Only ever seen in landscape, where the art is shown whole rather than cropped: a
-    // 40px copy of the same art blown up to fill the card, which is a blur by any other
-    // name, dimmed so the sharp copy in front of it stays the thing you look at.
-    const backdrop = s.add.image(0, 0, 'endcard_bg').setOrigin(0.5).setTint(0x8f9bbd);
+    // Only ever seen in landscape, where the art is shown whole rather than cropped: the
+    // same art again, covering the canvas and blurred, dimmed so the sharp copy in front
+    // of it stays the thing you look at. A blown-up 40x71 stand-in used to fill this
+    // role; at the zoom a landscape canvas needs, bilinear-stretching that few pixels
+    // read as blocky, not blurred - a real blur pass on the full-res art does not.
+    const backdrop = s.add.image(0, 0, 'endcard').setOrigin(0.5).setTint(0x8f9bbd);
+    backdrop.postFX.addBlur(0, 1, 1, 1, 0xffffff, 8);
     const art = s.add.image(0, 0, 'endcard').setOrigin(0.5);
     // A ramp of thin slices, not a panel: any band wide enough to see the edge of reads
     // as a box sitting on the art, which is exactly what this must not look like.
@@ -897,18 +909,26 @@ export class Hud {
       .setScale(Math.max(this.w / bsrc.width, this.h / bsrc.height));
 
     const src = art.texture.getSourceImage() as { width: number; height: number };
+    // The art's own on-screen width - narrower than the canvas in landscape, where it is
+    // portrait key art fit to height - so the badges below can be kept inside it rather
+    // than spilling onto the blurred backdrop either side.
+    let artW: number;
     if (this.h >= this.w) {
       // Portrait: cover, so it is full bleed, and anchored to the top rather than centred
       // - centring crops away the Explottens / Survivor lockup, which is the half of this
       // the brief asks for by name ("App logo + CTA").
       const k = Math.max(this.w / src.width, this.h / src.height);
       art.setScale(k).setPosition(this.w / 2, (src.height * k) / 2);
+      artW = src.width * k;
     } else {
-      // Landscape: this is portrait key art, and no crop of it to a wide strip keeps both
-      // the lockup and the hero - so it is shown whole, against the backdrop instead.
-      const room = this.h - 92;
-      const k = Math.min(this.w / src.width, room / src.height);
-      art.setScale(k).setPosition(this.w / 2, (src.height * k) / 2 + 6);
+      // Landscape: this is portrait key art, so fitting it to the width leaves it short
+      // of the screen's own height - a letterboxed strip with the backdrop showing above
+      // and below, which is also what showed through behind the store badges instead of
+      // the art itself. Fit to the full height instead: any width overflow just runs off
+      // the sides, same as the backdrop already does.
+      const k = this.h / src.height;
+      art.setScale(k).setPosition(this.w / 2, this.h / 2);
+      artW = src.width * k;
     }
 
     const band = Math.max(70, this.h * 0.26);
@@ -939,7 +959,7 @@ export class Hud {
     btn
       .setPosition(this.w / 2, this.h - Math.max(46, this.h * 0.085))
       // 1.04 of headroom for the pulse the inner container is running
-      .setScale(Math.min(1, (this.w - 24) / (total * 1.04)));
+      .setScale(Math.min(1, (Math.min(this.w, artW) - 24) / (total * 1.04)));
   }
 
   // ----------------------------------------------------------------- resize
@@ -970,7 +990,6 @@ export class Hud {
       st.label.setPosition(x + 18 * u, statY);
     });
 
-    this.hudBottom = statY + 14 * u;
     this.loadout.setPosition(pad, height - 54 * u);
     this.bossBar.setPosition(width / 2, statY + 42 * u).setScale(u);
 

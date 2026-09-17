@@ -35,7 +35,6 @@ import rockFar2 from 'assets/rock_far2.png';
 import horizon from 'assets/horizon.png';
 import foam from 'assets/foam.png';
 import endcard from 'assets/endcard.jpg';
-import endcardBg from 'assets/endcard_bg.jpg';
 import playstore from 'assets/playstore.png';
 import appstore from 'assets/appstore.png';
 
@@ -112,6 +111,13 @@ export const HUD = {
    *  against the rest of the HUD. It is a status readout, not the furniture: at 1 it
    *  was a billboard across the top of the arena. */
   barScale: 0.76,
+  /** Landscape has far less height to spare than width, so the status assembly draws
+   *  smaller still there - otherwise it eats a chunk of the arena's short side. */
+  barScaleLandscape: 0.6,
+  /** How far the slab (and its bars) reach across the canvas in landscape - independent
+   *  of barScaleLandscape, which only sets the assembly's height. Narrower than the
+   *  0.56 the slab used to reach, so it reads as a compact readout, not a wide banner. */
+  barWidthLandscape: 0.3,
   /** the heart at the health bar's cap; the XP bar's cap is the game's own green gem */
   heart: 0xe8354a,
   heartShade: 0x9c1b2c
@@ -298,7 +304,6 @@ export const IMAGES: Record<string, string> = {
   horizon,
   foam,
   endcard,
-  endcard_bg: endcardBg,
   playstore,
   appstore,
   gem_green: gemGreen,
