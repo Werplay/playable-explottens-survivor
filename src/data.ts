@@ -41,6 +41,7 @@ import gemBlue from 'assets/gem_blue.png';
 import gemGold from 'assets/gem_gold.png';
 import meat from 'assets/meat.png';
 import crate from 'assets/crate.png';
+import hudPortrait from 'assets/hud_portrait.png';
 
 import bullet from 'assets/bullet.png';
 import bulletLong from 'assets/bullet_long.png';
@@ -85,6 +86,29 @@ import sfxEvo from 'assets/sfx_evo.mp3';
 import hudTime from 'assets/hud_time.png';
 import hudKills from 'assets/hud_kills.png';
 import hudWave from 'assets/hud_wave.png';
+
+/** The player HUD, measured off `Sprites/GameHud/PlayerHuds/PlayerHud/PlayerHUD.json` -
+ *  the Spine assembly the game draws it with - and off a recording of it running.
+ *
+ *  Only the portrait ships as art (the riveted ring, its orange inner frame and the
+ *  pilot, composited to one 72px sprite). The housing, the troughs and the two fills are
+ *  flat shapes in the skeleton, so they are drawn rather than shipped; the colours below
+ *  are sampled from the atlas regions themselves, not from the video. */
+export const HUD = {
+  /** KIT/Explottens_KIT_Bars_base, KIT/Explottens_KIT_Red_Main */
+  plate: 0x520e00,
+  plateRim: 0xc52b12,
+  trough: 0x1f1205,
+  /** KIT/Explottens_KIT_Green_Bars: core, and the lighter sweep across its top */
+  hp: 0x12ff30,
+  hpShine: 0x7bff8e,
+  /** KIT/Explottens_KIT_Orange_Bars */
+  xp: 0xf4981a,
+  xpShine: 0xfccc1d,
+  /** the heart at the health bar's cap; the XP bar's cap is the game's own green gem */
+  heart: 0xe8354a,
+  heartShade: 0x9c1b2c
+};
 
 export const FONT = 'LuckiestGuy';
 export const FONT_URL = fontUrl;
@@ -299,7 +323,8 @@ export const IMAGES: Record<string, string> = {
   i_berserk: iBerserk,
   hud_time: hudTime,
   hud_kills: hudKills,
-  hud_wave: hudWave
+  hud_wave: hudWave,
+  hud_portrait: hudPortrait
 };
 
 // --- player ---------------------------------------------------------------
@@ -427,7 +452,7 @@ export const BEATS = {
   /** Brief note 1: "optional timer to create urgency (last 3 seconds blinking red +
    *  dramatic SFX)". It is a backstop - the mini-boss normally dies well inside it - and
    *  running it out still ends on the CTA, because an ad never punishes the player. */
-  timer: { seconds: 26, warn: 3 }
+  timer: { seconds: 30, warn: 3 }
 };
 
 /** How thick the sky is per beat - the brief's "Enemy count" editable.

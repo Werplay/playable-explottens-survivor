@@ -488,7 +488,9 @@ export class GameScene extends Phaser.Scene {
       this.warned = true;
       this.sfx('urgent');
     }
-    if (this.timeLeft <= 0) this.finishRun(this.beat === 'evoAttack');
+    // The clock is urgency theatre, not a fail state: the brief has one ending, so
+    // running it out still lands on the victory card and the CTA.
+    if (this.timeLeft <= 0) this.finishRun(true);
   }
 
   /** Move the script on. Each beat arms what it needs and tells the HUD what to say;
@@ -1452,8 +1454,14 @@ export class GameScene extends Phaser.Scene {
     this.move.set(0, 0);
     this.joyBase.setVisible(false);
     this.joyKnob.setVisible(false);
-    // clear what is left of the wave so the win reads as "wave cleared"
-    if (won) for (const e of [...this.enemies]) this.killEnemy(e);
+    // clear what is left of the wave so the win reads as "wave cleared", then sweep the
+    // loot with it - hundreds of live gems nobody can collect any more cost the victory
+    // beat about fifteen frames a second, and the confetti is the payoff now
+    if (won) {
+      for (const e of [...this.enemies]) this.killEnemy(e);
+      for (const p of this.pickups) p.spr.destroy();
+      this.pickups.length = 0;
+    }
     this.hud.showVictory(won, () => {
       this.hud.showEnd(won);
       sdk.finish();

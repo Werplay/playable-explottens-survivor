@@ -1,6 +1,6 @@
 import * as Phaser from 'phaser';
 import { sdk } from '@smoud/playable-sdk';
-import { BEATS, Beat, FONT, SkillDef } from './data';
+import { BEATS, Beat, FONT, HUD, SkillDef } from './data';
 import type { GameScene } from './GameScene';
 
 // The beat cue sits above the level-up panel: it is what tells the player what the
@@ -54,6 +54,14 @@ export class Hud {
   private hpBg!: Phaser.GameObjects.Rectangle;
   private hpFill!: Phaser.GameObjects.Rectangle;
   private stats: { icon: Phaser.GameObjects.Image; label: Phaser.GameObjects.Text }[] = [];
+  /** the game's own HUD assembly: riveted portrait, level badge, and the red slab the
+   *  health and XP bars are sunk into */
+  private portrait!: Phaser.GameObjects.Image;
+  private plate!: Phaser.GameObjects.Graphics;
+  private hpShine!: Phaser.GameObjects.Rectangle;
+  private xpShine!: Phaser.GameObjects.Rectangle;
+  private heart!: Phaser.GameObjects.Graphics;
+  private xpGem!: Phaser.GameObjects.Image;
   private loadout!: Phaser.GameObjects.Container;
 
   private intro!: Phaser.GameObjects.Container;
@@ -95,14 +103,37 @@ export class Hud {
     const s = this.s;
     this.root = s.add.container(0, 0).setScrollFactor(0).setDepth(D.hud);
 
-    this.xpBg = s.add.rectangle(0, 0, 100, 16, 0x0d2136, 0.72).setOrigin(0, 0.5);
-    this.xpFill = s.add.rectangle(0, 0, 100, 16, 0x7ee04a).setOrigin(0, 0.5);
-    this.lvlText = s.add.text(0, 0, 'Lv 1', this.label(20, GOLD)).setOrigin(0, 0.5);
+    // The game stacks health over XP in one red slab, with the pilot's portrait sunk
+    // into its left end and his level on the rim of it. `plate` is the slab and the two
+    // troughs; the bars themselves ride on top.
+    this.plate = s.add.graphics();
+    this.hpBg = s.add.rectangle(0, 0, 100, 13, HUD.trough).setOrigin(0, 0.5);
+    this.hpFill = s.add.rectangle(0, 0, 100, 13, HUD.hp).setOrigin(0, 0.5);
+    this.hpShine = s.add.rectangle(0, 0, 100, 4, HUD.hpShine, 0.55).setOrigin(0, 0.5);
+    this.xpBg = s.add.rectangle(0, 0, 100, 13, HUD.trough).setOrigin(0, 0.5);
+    this.xpFill = s.add.rectangle(0, 0, 100, 13, HUD.xp).setOrigin(0, 0.5);
+    this.xpShine = s.add.rectangle(0, 0, 100, 4, HUD.xpShine, 0.6).setOrigin(0, 0.5);
 
-    this.hpBg = s.add.rectangle(0, 0, 100, 12, 0x0d2136, 0.72).setOrigin(0, 0.5);
-    this.hpFill = s.add.rectangle(0, 0, 100, 12, 0xff5a4d).setOrigin(0, 0.5);
+    // the cap icons: a drawn heart, and the game's own XP gem
+    this.heart = s.add.graphics();
+    this.xpGem = s.add.image(0, 0, 'gem_green').setScale(0.62);
 
-    this.root.add([this.xpBg, this.xpFill, this.lvlText, this.hpBg, this.hpFill]);
+    this.portrait = s.add.image(0, 0, 'hud_portrait');
+    this.lvlText = s.add.text(0, 0, '1', this.label(21)).setOrigin(0.5);
+
+    this.root.add([
+      this.plate,
+      this.hpBg,
+      this.hpFill,
+      this.hpShine,
+      this.xpBg,
+      this.xpFill,
+      this.xpShine,
+      this.heart,
+      this.xpGem,
+      this.portrait,
+      this.lvlText
+    ]);
 
     for (const key of ['hud_time', 'hud_kills', 'hud_wave']) {
       const icon = s.add.image(0, 0, key).setScale(0.5).setOrigin(0.5);
@@ -242,8 +273,13 @@ export class Hud {
   update(_dt: number) {
     const s = this.s;
     this.xpFill.width = this.xpBg.width * Phaser.Math.Clamp(s.xp / s.xpNeed, 0, 1);
-    this.lvlText.setText(`Lv ${s.level}`);
     this.hpFill.width = this.hpBg.width * Phaser.Math.Clamp(s.hp / s.maxHp, 0, 1);
+    // the sweep across each bar is inset from its own cap, and vanishes with it
+    this.hpShine.width = Math.max(0, this.hpFill.width - 6);
+    this.xpShine.width = Math.max(0, this.xpFill.width - 6);
+    this.hpShine.setVisible(this.hpFill.width > 7);
+    this.xpShine.setVisible(this.xpFill.width > 7);
+    this.lvlText.setText(`${s.level}`);
 
     // brief 1: the finger cue rides on the player rather than sitting near him
     if (this.finger.visible) {
@@ -263,7 +299,7 @@ export class Hud {
     if (this.xpGlow.visible) {
       const pulse = 0.45 + 0.35 * Math.sin(s.elapsed * 7);
       this.xpGlow.clear().lineStyle(4, 0xffe45c, pulse);
-      this.xpGlow.strokeRoundedRect(this.xpBg.x - 5, this.xpBg.y - 15, this.xpBg.width + 10, 26, 8);
+      this.xpGlow.strokeRoundedRect(this.xpBg.x - 6, this.xpBg.y - 9, this.xpBg.width + 12, 18, 7);
       const n = Math.max(1, s.ownedList().length);
       this.xpGlow.strokeRoundedRect(this.loadout.x - 5, this.loadout.y - 5, n * 44 + 4, 48, 8);
     }
@@ -492,6 +528,53 @@ export class Hud {
     );
   }
 
+  /** The player HUD the game draws: the portrait sunk into the left end of a red slab,
+   *  the level on its rim, and health over XP in two troughs cut out of it. */
+  private layoutBars(width: number, pad: number) {
+    const d = 62; // portrait diameter
+    const cx = pad + d / 2;
+    const cy = 46;
+    const x0 = cx + d / 2 - 6; // the slab runs out from under the portrait
+    const x1 = width - pad;
+    const top = cy - 23;
+    const h = 46;
+    const barX = x0 + 22; // clear of the cap icons
+    const barW = Math.max(10, x1 - 10 - barX);
+    const hpY = cy - 10;
+    const xpY = cy + 11;
+
+    this.plate.clear();
+    this.plate.fillStyle(HUD.plate, 1).fillRoundedRect(x0, top, x1 - x0, h, 11);
+    this.plate.lineStyle(3, HUD.plateRim, 1).strokeRoundedRect(x0, top, x1 - x0, h, 11);
+
+    for (const [y, bg, fill, shine] of [
+      [hpY, this.hpBg, this.hpFill, this.hpShine],
+      [xpY, this.xpBg, this.xpFill, this.xpShine]
+    ] as [number, Phaser.GameObjects.Rectangle, Phaser.GameObjects.Rectangle, Phaser.GameObjects.Rectangle][]) {
+      bg.setPosition(barX, y).setSize(barW, 13);
+      fill.setPosition(barX, y).setSize(barW, 13);
+      shine.setPosition(barX + 3, y - 3).setSize(barW, 4);
+    }
+
+    // a heart at the health cap, the game's XP gem at the other
+    const hx = barX - 11;
+    this.heart.clear();
+    const r = 5.5;
+    for (const [col, off] of [
+      [HUD.heartShade, 1.5],
+      [HUD.heart, 0]
+    ] as [number, number][]) {
+      this.heart.fillStyle(col, 1);
+      this.heart.fillCircle(hx - r * 0.52, hpY - r * 0.42 + off, r * 0.74);
+      this.heart.fillCircle(hx + r * 0.52, hpY - r * 0.42 + off, r * 0.74);
+      this.heart.fillTriangle(hx - r * 1.12, hpY - r * 0.16 + off, hx + r * 1.12, hpY - r * 0.16 + off, hx, hpY + r * 1.18 + off);
+    }
+    this.xpGem.setPosition(hx, xpY);
+
+    this.portrait.setPosition(cx, cy).setDisplaySize(d, d);
+    this.lvlText.setPosition(cx, cy + d / 2 - 7);
+  }
+
   /** Header tucks in on a short screen so three cards still fit under it. */
   private headerY() {
     return Phaser.Math.Clamp(this.h * 0.14, 40, 110);
@@ -657,19 +740,12 @@ export class Hud {
     this.screens = this.screens.filter((c) => c.scene);
     for (const c of this.screens) this.s.pinTo(c);
     const pad = 14;
-    const barW = width - pad * 2 - 74;
-
-    this.xpBg.setPosition(pad, 24).setSize(barW, 16);
-    this.xpFill.setPosition(pad, 24).setSize(barW, 16);
-    this.lvlText.setPosition(pad + barW + 10, 24);
-
-    this.hpBg.setPosition(pad, 48).setSize(barW, 12);
-    this.hpFill.setPosition(pad, 48).setSize(barW, 12);
+    this.layoutBars(width, pad);
 
     this.stats.forEach((st, i) => {
       const x = pad + 16 + i * Math.min(110, (width - pad * 2) / 3);
-      st.icon.setPosition(x, 84);
-      st.label.setPosition(x + 18, 84);
+      st.icon.setPosition(x, 98);
+      st.label.setPosition(x + 18, 98);
     });
 
     this.loadout.setPosition(pad, height - 54);
@@ -677,7 +753,7 @@ export class Hud {
     this.bossBar.setPosition(width / 2, 132);
 
     // brief 2: the Attack -> Loot -> Upgrade panel, centred under the run stats
-    this.steps.setPosition(width / 2, 116);
+    this.steps.setPosition(width / 2, 124);
     const gap = Math.min(78, (width - 60) / 3);
     this.stepLabels.forEach((t, i) => t.setPosition((i - 1) * gap, 0));
     for (const child of this.steps.list) {
