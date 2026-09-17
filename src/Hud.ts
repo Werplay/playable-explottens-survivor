@@ -695,14 +695,28 @@ export class Hud {
     return this.cueOn ? this.cueH + 24 * this.ui : 46 * this.ui;
   }
 
+  /** A short, wide viewport has room across the arena but not below the HUD. A two-card
+   *  grid uses that width; keeping the phone's one-column stack there forces every card
+   *  down to its minimum scale. */
+  private panelColumns() {
+    return this.w > this.h * 1.2 ? 2 : 1;
+  }
+
   /** Uniform scale that fits the card to the width and the stack to what is left of the
    *  height once the HUD, the heading band and Refresh have taken their share. */
   private cardScale() {
-    const room = this.h - this.panelTop() - this.headBand() - 96 * this.ui;
-    const perCard = (room - 2 * CARD.gap * this.ui) / 3;
+    const cols = this.panelColumns();
+    const rows = Math.ceil(3 / cols);
+    // In landscape the Refresh control is deliberately compact. Reserving the portrait
+    // button's tall footer is what made the upgrade cards collapse into tiny strips.
+    const footer = (cols > 1 ? 52 : 96) * this.ui;
+    const room = this.h - this.panelTop() - this.headBand() - footer;
+    const widthScale =
+      (this.w - 32 * this.ui) / (cols * CARD.w + (cols - 1) * CARD.gap);
+    const heightScale = (room - (rows - 1) * CARD.gap) / (rows * CARD.h);
     // Capped at the UI scale, not at 1: on a tablet the HUD grows and a card stack still
     // pinned to its phone size reads as a postage stamp in the middle of the screen.
-    return Phaser.Math.Clamp(Math.min((this.w - 32 * this.ui) / CARD.w, perCard / CARD.h), 0.3, this.ui);
+    return Phaser.Math.Clamp(Math.min(widthScale, heightScale), 0.3, this.ui);
   }
 
   private layoutOverlay(header: Phaser.GameObjects.Container, refresh: Phaser.GameObjects.Container) {
@@ -711,15 +725,20 @@ export class Hud {
     (c.getAt(0) as Phaser.GameObjects.Rectangle).setSize(this.w, this.h);
 
     const k = this.cardScale();
+    const cols = this.panelColumns();
+    const rows = Math.ceil(3 / cols);
     const cardH = CARD.h * k;
+    const cardW = CARD.w * k;
     const gap = CARD.gap * k;
-    const span = 3 * cardH + 2 * gap;
+    const span = rows * cardH + (rows - 1) * gap;
+    const gridW = cols * cardW + (cols - 1) * gap;
 
     // One vertical stack, measured rather than guessed: the run HUD, then the heading
     // band - the beat cue when one is up, the "SELECT A SKILL" rule otherwise - then the
     // three cards, then Refresh. The cue used to sit at a fixed row and land on the top
     // card on anything that was not a 400x720 phone.
     const u = this.ui;
+    const footer = (cols > 1 ? 52 : 96) * u;
     const stackTop = this.panelTop();
     const band = this.headBand();
     // `cue` is its own screen-pinned root, unlike the cards which are children of the
@@ -729,17 +748,29 @@ export class Hud {
 
     const top = stackTop + band;
     const centre = Phaser.Math.Clamp(
-      top + span / 2 + Math.max(0, (this.h - top - span - 96 * u) / 2),
+      top + span / 2 + Math.max(0, (this.h - top - span - footer) / 2),
       top + span / 2,
-      Math.max(top + span / 2, this.h - span / 2 - 84 * u)
+      Math.max(top + span / 2, this.h - span / 2 - (cols > 1 ? 48 : 84) * u)
     );
 
-    refresh.setPosition(this.w / 2, Math.min(centre + span / 2 + 46 * u, this.h - 34 * u)).setScale(k);
+    refresh
+      .setPosition(this.w / 2, Math.min(centre + span / 2 + (cols > 1 ? 30 : 46) * u, this.h - 28 * u))
+      .setScale(cols > 1 ? Math.min(k, 0.55) : k);
 
     for (let i = 3; i < c.length; i++) {
       const card = c.getAt(i) as Phaser.GameObjects.Container;
       const idx = card.getData('index') as number;
-      card.setPosition(this.w / 2, centre - span / 2 + cardH / 2 + idx * (cardH + gap)).setScale(k);
+      const col = idx % cols;
+      const row = Math.floor(idx / cols);
+      // A three-item choice in a two-column grid leaves one final card. Centre it rather
+      // than making the composition look accidentally left-aligned.
+      const x = idx === 2 && cols === 2 ? this.w / 2 : this.w / 2 - gridW / 2 + cardW / 2 + col * (cardW + gap);
+      card
+        .setPosition(
+          x,
+          centre - span / 2 + cardH / 2 + row * (cardH + gap)
+        )
+        .setScale(k);
     }
   }
 
