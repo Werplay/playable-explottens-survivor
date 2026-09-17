@@ -703,24 +703,23 @@ export class Hud {
   }
 
   // --------------------------------------------------------------- end card
+  /** Brief 7: the end card is the key art attached to the brief - the Explottens /
+   *  Survivor lockup and the hero over it - with the CTA laid on top. The art covers the
+   *  card whatever the aspect, so there is never a letterbox; a shade under the button
+   *  keeps it readable where the art runs bright. */
   showEnd(won: boolean) {
     const s = this.s;
     this.closeLevelUp();
     const c = s.add.container(0, 0).setScrollFactor(0).setDepth(D.overlay);
-    const dim = s.add.rectangle(0, 0, this.w, this.h, 0x04101d, 0.9).setOrigin(0);
 
-    const icon = s.add.image(0, 0, 'appicon').setScale(0.42);
-    const title = s.add
-      .text(0, 0, won ? BEATS.win.overlay : 'SHOT DOWN!', {
-        ...this.label(30, GOLD),
-        align: 'center',
-        wordWrap: { width: 380 }
-      })
-      .setOrigin(0.5);
-    const score = s.add
-      .text(0, 0, `${s.kills} KILLS   ·   Lv ${s.level}`, this.label(20))
-      .setOrigin(0.5);
-    const sub = s.add.text(0, 0, 'Explottens: Survival', this.label(22, '#8fe3ff')).setOrigin(0.5);
+    // Only ever seen in landscape, where the art is shown whole rather than cropped: a
+    // 40px copy of the same art blown up to fill the card, which is a blur by any other
+    // name, dimmed so the sharp copy in front of it stays the thing you look at.
+    const backdrop = s.add.image(0, 0, 'endcard_bg').setOrigin(0.5).setTint(0x8f9bbd);
+    const art = s.add.image(0, 0, 'endcard').setOrigin(0.5);
+    // A ramp of thin slices, not a panel: any band wide enough to see the edge of reads
+    // as a box sitting on the art, which is exactly what this must not look like.
+    const shade = s.add.graphics();
 
     const btnBg = s.add.rectangle(0, 0, 300, 84, BEATS.win.ctaColor).setOrigin(0.5);
     btnBg.setStrokeStyle(5, 0x1c6d22);
@@ -729,25 +728,56 @@ export class Hud {
     s.tweens.add({ targets: btn, scale: 1.07, duration: 620, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     btnBg.setInteractive({ useHandCursor: true }).on('pointerdown', () => sdk.install());
 
-    c.add([dim, icon, title, sub, score, btn]);
+    c.add([backdrop, art, shade, btn]);
+    c.setData('end', { backdrop, art, shade, btn });
     this.overlay = c;
     this.pinScreen(c);
-    c.setData('end', true);
+    c.setAlpha(0);
+    s.tweens.add({ targets: c, alpha: 1, duration: 320 });
     this.layoutEnd();
   }
 
   private layoutEnd() {
-    const c = this.overlay;
-    if (!c || !c.getData('end')) return;
-    const cx = this.w / 2;
-    const cy = this.h / 2;
-    const k = Math.min(1, Math.min(this.w / 420, this.h / 640));
-    (c.getAt(0) as Phaser.GameObjects.Rectangle).setSize(this.w, this.h);
-    (c.getAt(1) as Phaser.GameObjects.Image).setPosition(cx, cy - 190 * k).setScale(0.42 * k);
-    (c.getAt(2) as Phaser.GameObjects.Text).setPosition(cx, cy - 50 * k).setScale(k);
-    (c.getAt(3) as Phaser.GameObjects.Text).setPosition(cx, cy - 6 * k).setScale(k);
-    (c.getAt(4) as Phaser.GameObjects.Text).setPosition(cx, cy + 40 * k).setScale(k);
-    (c.getAt(5) as Phaser.GameObjects.Container).setPosition(cx, cy + 150 * k).setScale(k);
+    const parts = this.overlay?.getData('end') as
+      | {
+          backdrop: Phaser.GameObjects.Image;
+          art: Phaser.GameObjects.Image;
+          shade: Phaser.GameObjects.Graphics;
+          btn: Phaser.GameObjects.Container;
+        }
+      | undefined;
+    if (!parts) return;
+    const { backdrop, art, shade, btn } = parts;
+    const bsrc = backdrop.texture.getSourceImage() as { width: number; height: number };
+    backdrop
+      .setPosition(this.w / 2, this.h / 2)
+      .setScale(Math.max(this.w / bsrc.width, this.h / bsrc.height));
+
+    const src = art.texture.getSourceImage() as { width: number; height: number };
+    if (this.h >= this.w) {
+      // Portrait: cover, so it is full bleed, and anchored to the top rather than centred
+      // - centring crops away the Explottens / Survivor lockup, which is the half of this
+      // the brief asks for by name ("App logo + CTA").
+      const k = Math.max(this.w / src.width, this.h / src.height);
+      art.setScale(k).setPosition(this.w / 2, (src.height * k) / 2);
+    } else {
+      // Landscape: this is portrait key art, and no crop of it to a wide strip keeps both
+      // the lockup and the hero - so it is shown whole, against the backdrop instead.
+      const room = this.h - 92;
+      const k = Math.min(this.w / src.width, room / src.height);
+      art.setScale(k).setPosition(this.w / 2, (src.height * k) / 2 + 6);
+    }
+
+    const band = Math.max(70, this.h * 0.26);
+    const slices = 24;
+    shade.clear();
+    for (let i = 0; i < slices; i++) {
+      const t = (i + 1) / slices;
+      shade.fillStyle(0x0a0618, 0.55 * t * t);
+      shade.fillRect(0, this.h - band + (band * i) / slices, this.w, band / slices + 1);
+    }
+
+    btn.setPosition(this.w / 2, this.h - Math.max(58, this.h * 0.1)).setScale(Math.min(1, this.w / 380));
   }
 
   // ----------------------------------------------------------------- resize
