@@ -34,7 +34,8 @@ import rockFar1 from 'assets/rock_far1.png';
 import rockFar2 from 'assets/rock_far2.png';
 import horizon from 'assets/horizon.png';
 import foam from 'assets/foam.png';
-import appicon from 'assets/appicon.png';
+import endcard from 'assets/endcard.jpg';
+import endcardBg from 'assets/endcard_bg.jpg';
 
 import gemGreen from 'assets/gem_green.png';
 import gemBlue from 'assets/gem_blue.png';
@@ -290,7 +291,8 @@ export const IMAGES: Record<string, string> = {
   rock_far2: rockFar2,
   horizon,
   foam,
-  appicon,
+  endcard,
+  endcard_bg: endcardBg,
   gem_green: gemGreen,
   gem_blue: gemBlue,
   gem_gold: gemGold,
