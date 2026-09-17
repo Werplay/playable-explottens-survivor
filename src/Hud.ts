@@ -752,13 +752,14 @@ export class Hud {
     // In landscape, centre the cue-plus-grid composition itself. The previous layout
     // centred only within the leftover space below the HUD, which visually parked the
     // whole choice in the lower half of a wide screen.
-    const centre = cols > 1
-      ? Phaser.Math.Clamp(this.h * 0.55, top + span / 2, Math.max(top + span / 2, this.h - span / 2 - 48 * u))
-      : Phaser.Math.Clamp(
-          top + span / 2 + Math.max(0, (this.h - top - span - footer) / 2),
-          top + span / 2,
-          Math.max(top + span / 2, this.h - span / 2 - 84 * u)
-        );
+    // Refresh owns the footer band; the cards are centred in everything between the
+    // heading and it. Centring against `h` instead, with Refresh then placed relative to
+    // the stack, left the cards hugging the heading with a pool of dead space under them.
+    const bottom = this.h - footer;
+    const centre =
+      cols > 1
+        ? Phaser.Math.Clamp(this.h * 0.55, top + span / 2, Math.max(top + span / 2, this.h - span / 2 - 48 * u))
+        : Phaser.Math.Clamp((top + bottom) / 2, top + span / 2, Math.max(top + span / 2, bottom - span / 2));
     const headingY = cols > 1 ? centre - span / 2 - band / 2 : stackTop + band / 2;
     // `cue` is its own screen-pinned root, unlike the cards which are children of the
     // panel. Place it through pinTo so rotation cannot apply the new camera zoom twice.
@@ -766,7 +767,12 @@ export class Hud {
     header.setPosition(this.w / 2, headingY).setScale(k);
 
     refresh
-      .setPosition(this.w / 2, Math.min(centre + span / 2 + (cols > 1 ? 52 : 70) * u, this.h - 28 * u))
+      .setPosition(
+        this.w / 2,
+        cols > 1
+          ? Math.min(centre + span / 2 + 52 * u, this.h - 28 * u)
+          : bottom + footer / 2
+      )
       .setScale(cols > 1 ? Math.min(k, 0.55) : k);
 
     for (let i = 3; i < c.length; i++) {
