@@ -54,10 +54,8 @@ Two deliberate departures from the brief, both asked for after it: the
 badges rather than a **PLAY NOW** button (brief 7). Both badges call `sdk.install()` —
 a playable must never carry its own store URL, and the network picks the store.
 
-> **The badge artwork is a drawn stand-in.** Google and Apple both require their own
-> supplied badge files, used unmodified. Before this ships, swap the two glyphs in
-> `Hud.makeStoreBadge` for the official assets — drop them in as `badge_google` /
-> `badge_apple` images and each badge becomes a single `s.add.image`.
+The badges are the official artwork (`assets/playstore.png`, `assets/appstore.png`),
+matched on height and centred as a pair.
 
 ## What came from the Unity project
 
@@ -179,6 +177,29 @@ deliberately different and are marked as such in `src/data.ts`:
   levels 1–2. The bubble is drawn at whatever it hits at, so the ring on screen *is* the
   hitbox at every level, and the table's 1 : 1.5 : 2 : 2.5 : 3 proportions are kept
   above the floor.
+
+## Responsiveness
+
+The HUD is authored against a **400px short side** and everything in it is laid out from
+`Hud.ui` — `clamp(min(w, h) / 400, 0.7, 2.2)` — so it keeps the same share of the screen
+rather than the same pixel count. Labels re-render at `base * ui` instead of being scaled
+as bitmaps. Under the bar slab, each row stacks off the measured bottom of the one above
+it rather than sitting at a fixed y, and the level-up panel does the same: run HUD, then
+the heading band, then the cards, then Refresh.
+
+Three bugs worth remembering, all the same shape — **two things writing one `scale`**.
+`pinTo` puts `1/zoom` on a pinned container; a tween or a fit that then calls `setScale`
+on that same container throws the pin away. It hit the CTA's pulse, the intro's
+fit-to-width and the beat cue's pop. Each is fixed by nesting: the outer container keeps
+the pin, an inner one carries the animation or the fit.
+
+Also: Phaser cannot measure a `Graphics`, so a `Container` holding one reports nonsense
+bounds. The beat cue's panel is a `Graphics`, and that is what put the hint on top of the
+first upgrade card — it now carries a zero-alpha `Rectangle` at the panel's real size.
+
+`tools/` is not the place to check this; `Hud.resize` is. Verified across fourteen canvas
+sizes from 280x480 to 1600x900, in four states each, for elements outside the canvas
+*and* for elements overlapping each other.
 
 ## Layout
 
