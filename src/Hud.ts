@@ -700,7 +700,10 @@ export class Hud {
    *  above the run HUD in depth - the HUD is already covered, not something to clear -
    *  so this is just a safe inset off the top edge. */
   private panelTop() {
-    return Phaser.Math.Clamp(this.h * 0.05, 16, 50);
+    // Bounds scale with `ui`, not raw canvas px - the canvas is bigger than its on-screen
+    // size once the DPR fix supersamples it, and a fixed pixel cap here would clip to a
+    // shrinking fraction of the panel as that gets larger.
+    return Phaser.Math.Clamp(this.h * 0.05, 16 * this.ui, 50 * this.ui);
   }
 
   /** Height of the heading band - the beat cue when one is up, otherwise the rule. */
