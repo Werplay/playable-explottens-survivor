@@ -391,8 +391,10 @@ export class GameScene extends Phaser.Scene {
   private get armorMul() {
     return Math.pow(0.9, this.lvlOf('armor'));
   }
+  /** Zero until Catnip Magnet is picked up ("Item loot range +100%"). Loot is taken by
+   *  flying onto it; the passive is what makes it come to you. */
   private get magnetRadius() {
-    return PLAYER.pickupRadius * (1 + this.lvlOf('magnet'));
+    return PLAYER.pickupRadius * this.lvlOf('magnet');
   }
   private get xpMul() {
     return Math.pow(1.08, this.lvlOf('xp'));
@@ -468,6 +470,7 @@ export class GameScene extends Phaser.Scene {
     this.updateSpawner(dt);
     this.updateCrates(dt);
     if (this.beat === 'combat' && this.beatT >= BEATS.combat.cue) this.setBeat('collect');
+    this.railXpBar();
     this.updateEnemies(dt);
     this.updateWeapons(dt);
     this.updateProjectiles(dt);
@@ -512,6 +515,17 @@ export class GameScene extends Phaser.Scene {
     if (this.beat === 'combat' || this.beat === 'collect') return BEATS.combat.xp;
     if (this.beat === 'upgrade') return BEATS.evo.xp;
     return xpForLevel(this.level);
+  }
+
+  /** Loot is only taken by flying onto it, so a player who ignores the gems can stall a
+   *  beat for as long as they like - and the brief's seven beats have to land inside the
+   *  clock. Once a beat has run long this tops the bar up the rest of the way, so the
+   *  fill still completes on screen and the card arrives exactly as it always does. */
+  private railXpBar() {
+    const wait =
+      this.beat === 'collect' ? BEATS.combat.maxWait : this.beat === 'upgrade' ? BEATS.evo.maxWait : 0;
+    if (!wait || this.beatT < wait || this.state !== 'play') return;
+    this.addXp((this.xpNeed - this.xp) / (this.xpMul * XP_RATE) + 1);
   }
 
   private armXpBar() {
@@ -933,10 +947,15 @@ export class GameScene extends Phaser.Scene {
 
   private updatePickups(dt: number) {
     const r = this.magnetRadius;
+    // Everything here is measured from the plane's art, not from the skeleton origin it
+    // hangs off - that offset is most of a plane's length, and using the origin both
+    // takes loot the plane is visibly clear of and leaves loot it is sitting on.
+    const px = this.player.x + this.plane.dx;
+    const py = this.player.y + this.plane.dy;
     for (let i = this.pickups.length - 1; i >= 0; i--) {
       const p = this.pickups[i];
-      const dx = this.player.x - p.spr.x;
-      const dy = this.player.y - p.spr.y;
+      const dx = px - p.spr.x;
+      const dy = py - p.spr.y;
       const d = Math.hypot(dx, dy) || 1;
 
       if (p.pulled || d < r) {
@@ -951,7 +970,7 @@ export class GameScene extends Phaser.Scene {
       p.spr.x += p.vx * dt;
       p.spr.y += p.vy * dt;
 
-      if (d < 22) {
+      if (d < PLAYER.grabRadius) {
         if (p.xp) this.addXp(p.xp);
         if (p.heal) this.hp = Math.min(this.maxHp, this.hp + p.heal);
         p.spr.destroy();

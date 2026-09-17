@@ -337,6 +337,14 @@ export const PLAYER = {
   health: 140, // SurvivorLevelUpData BaseHP 100, padded for a ~90s ad run
   speed: 190, // px/s
   radius: 22,
+  /** How close the plane's *art* has to be to a dropped item to take it. Loot is picked
+   *  up by flying onto it, not by passing near it, so this is contact: a shade over half
+   *  the plane's own 48px resting box. Measured from the art's centre - the art hangs
+   *  well off the skeleton origin, so measuring from the origin takes gems the plane is
+   *  visibly nowhere near, and misses ones it is sitting on. */
+  grabRadius: 26,
+  /** Reach of Catnip Magnet, per level. Zero without it: nothing drifts to the plane on
+   *  its own, which is the whole point of `grabRadius`. */
   pickupRadius: 240,
   accel: 14, // how fast velocity chases the joystick vector
   hurtCooldown: 0.7 // i-frames after a collision
@@ -415,7 +423,11 @@ export const BEATS = {
     cue: 2.5,
     text: 'Collect gems!',
     /** XP the bar takes to fill into the weapon upgrade (beat 4) */
-    xp: 900
+    xp: 700,
+    /** Seconds this beat may run before the bar is topped up the rest of the way. Loot
+     *  is only taken on contact, so a player who does not chase gems can stall a beat
+     *  indefinitely - and the brief's seven beats have to fit inside `timer`. */
+    maxWait: 7
   },
   /** 4. Weapon upgrade - pick 1 of 3 */
   upgrade: { text: 'Upgrade your weapon to deal more damage!' },
@@ -424,7 +436,8 @@ export const BEATS = {
     text: 'Evolve your weapon for unstoppable power!',
     horde: 16,
     /** XP from the weapon upgrade to the evo pick (beat 5) */
-    xp: 1500
+    xp: 950,
+    maxWait: 9
   },
   /** 6. Evo attack - the mini-boss wave */
   evoAttack: {

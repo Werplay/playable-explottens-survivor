@@ -11,8 +11,8 @@ game's own font, and code inlined.
 ## The loop
 
 Swipe anywhere to fly. The plane auto-fires at the nearest enemy. Cat planes and
-bug-bots close in from every side; kills and shot-open loot boxes drop XP gems that
-magnet in, and the XP bar fills twice — once into a weapon upgrade, once into
+bug-bots close in from every side; kills and shot-open loot boxes drop XP gems, which
+are picked up by flying onto them, and the XP bar fills twice — once into a weapon upgrade, once into
 **Kitty Rage**: ten seconds of the sky turned orange, the plane doubled in speed and
 untouchable, and six plasma bolts a tenth of a second going out in every direction at
 fifty times a normal shot. A mini-boss rides in on that horde, and taking it down ends
@@ -144,6 +144,15 @@ deliberately different and are marked as such in `src/data.ts`:
   `BEATS.evo.xp` size its two scripted fills so they land on beats 4 and 5;
   `InGameXpHandler`'s own `40L² + 80L − 20` takes over afterwards and from there only
   moves the level counter. `XP_RATE` still scales what a gem is worth.
+- `PLAYER.grabRadius` (26px) is the contact radius for loot, measured from the plane's
+  *art* rather than from the skeleton origin the art hangs off — that offset is most of a
+  plane's length, so measuring from the origin both takes gems the plane is visibly clear
+  of and misses ones it is sitting on. `PLAYER.pickupRadius` is now Catnip Magnet's reach
+  *per level* and is zero without it: nothing drifts to the plane on its own. The game
+  itself magnets loot in from a wide radius; here you fly onto it.
+- `BEATS.combat.maxWait` / `BEATS.evo.maxWait` top the XP bar up once a beat has run
+  long. With loot taken only on contact a player who ignores the gems can stall a beat
+  indefinitely, and the brief's seven beats have to land inside `BEATS.timer`.
 - `BEATS.evoAttack.hpMul` multiplies the mini-boss's HP by 55. Kitty Rage hits for 50×
   a normal shot, so at its stock 420 HP the mini-boss is a speed bump rather than the
   fight beat 6 is supposed to showcase.
