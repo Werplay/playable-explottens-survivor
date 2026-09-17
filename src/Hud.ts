@@ -631,7 +631,11 @@ export class Hud {
     // underneath it, which read as one crowded shape instead of the in-game badge next
     // to the health / XP unit.
     const x0 = cx + d / 2 + 8 * u;
-    const x1 = width - pad;
+    // A phone HUD can use the available width. On a wide canvas that same treatment
+    // becomes a billboard across the playfield, so cap the status slab and leave the
+    // right side open for the game action.
+    const landscape = width > this.h * 1.2;
+    const x1 = landscape ? Math.min(width - pad, x0 + width * 0.56) : width - pad;
     const top = cy - 23 * u;
     const h = 46 * u;
     const barX = x0 + 22 * u; // clear of the cap icons
@@ -741,17 +745,22 @@ export class Hud {
     const footer = (cols > 1 ? 52 : 96) * u;
     const stackTop = this.panelTop();
     const band = this.headBand();
+    const top = stackTop + band;
+    // In landscape, centre the cue-plus-grid composition itself. The previous layout
+    // centred only within the leftover space below the HUD, which visually parked the
+    // whole choice in the lower half of a wide screen.
+    const centre = cols > 1
+      ? Phaser.Math.Clamp(this.h * 0.55, top + span / 2, Math.max(top + span / 2, this.h - span / 2 - 48 * u))
+      : Phaser.Math.Clamp(
+          top + span / 2 + Math.max(0, (this.h - top - span - footer) / 2),
+          top + span / 2,
+          Math.max(top + span / 2, this.h - span / 2 - 84 * u)
+        );
+    const headingY = cols > 1 ? centre - span / 2 - band / 2 : stackTop + band / 2;
     // `cue` is its own screen-pinned root, unlike the cards which are children of the
     // panel. Place it through pinTo so rotation cannot apply the new camera zoom twice.
-    if (this.cueOn) this.s.pinTo(this.cue, this.w / 2, stackTop + band / 2);
-    header.setPosition(this.w / 2, stackTop + band / 2).setScale(k);
-
-    const top = stackTop + band;
-    const centre = Phaser.Math.Clamp(
-      top + span / 2 + Math.max(0, (this.h - top - span - footer) / 2),
-      top + span / 2,
-      Math.max(top + span / 2, this.h - span / 2 - (cols > 1 ? 48 : 84) * u)
-    );
+    if (this.cueOn) this.s.pinTo(this.cue, this.w / 2, headingY);
+    header.setPosition(this.w / 2, headingY).setScale(k);
 
     refresh
       .setPosition(this.w / 2, Math.min(centre + span / 2 + (cols > 1 ? 30 : 46) * u, this.h - 28 * u))
