@@ -696,7 +696,9 @@ export class Hud {
 
   /** Height of the heading band - the beat cue when one is up, otherwise the rule. */
   private headBand() {
-    return this.cueOn ? this.cueH + 24 * this.ui : 46 * this.ui;
+    // The hint is a separate instruction, not a fourth card. Give it a clear gutter
+    // above the selectable stack.
+    return this.cueOn ? this.cueH + 40 * this.ui : 46 * this.ui;
   }
 
   /** A short, wide viewport has room across the arena but not below the HUD. A two-card
@@ -713,11 +715,10 @@ export class Hud {
     const rows = Math.ceil(3 / cols);
     // In landscape the Refresh control is deliberately compact. Reserving the portrait
     // button's tall footer is what made the upgrade cards collapse into tiny strips.
-    const footer = (cols > 1 ? 52 : 96) * this.ui;
+    const footer = (cols > 1 ? 70 : 120) * this.ui;
     const room = this.h - this.panelTop() - this.headBand() - footer;
-    const widthScale =
-      (this.w - 32 * this.ui) / (cols * CARD.w + (cols - 1) * CARD.gap);
-    const heightScale = (room - (rows - 1) * CARD.gap) / (rows * CARD.h);
+    const widthScale = (this.w - 32 * this.ui) / (cols * CARD.w);
+    const heightScale = room / (rows * CARD.h);
     // Capped at the UI scale, not at 1: on a tablet the HUD grows and a card stack still
     // pinned to its phone size reads as a postage stamp in the middle of the screen.
     return Phaser.Math.Clamp(Math.min(widthScale, heightScale), 0.3, this.ui);
@@ -733,16 +734,18 @@ export class Hud {
     const rows = Math.ceil(3 / cols);
     const cardH = CARD.h * k;
     const cardW = CARD.w * k;
-    const gap = CARD.gap * k;
-    const span = rows * cardH + (rows - 1) * gap;
-    const gridW = cols * cardW + (cols - 1) * gap;
+    // Cards form one uninterrupted choice stack. Space belongs around that stack, not
+    // between its individual choices.
+    const gap = 0;
+    const span = rows * cardH;
+    const gridW = cols * cardW;
 
     // One vertical stack, measured rather than guessed: the run HUD, then the heading
     // band - the beat cue when one is up, the "SELECT A SKILL" rule otherwise - then the
     // three cards, then Refresh. The cue used to sit at a fixed row and land on the top
     // card on anything that was not a 400x720 phone.
     const u = this.ui;
-    const footer = (cols > 1 ? 52 : 96) * u;
+    const footer = (cols > 1 ? 70 : 120) * u;
     const stackTop = this.panelTop();
     const band = this.headBand();
     const top = stackTop + band;
@@ -763,7 +766,7 @@ export class Hud {
     header.setPosition(this.w / 2, headingY).setScale(k);
 
     refresh
-      .setPosition(this.w / 2, Math.min(centre + span / 2 + (cols > 1 ? 30 : 46) * u, this.h - 28 * u))
+      .setPosition(this.w / 2, Math.min(centre + span / 2 + (cols > 1 ? 52 : 70) * u, this.h - 28 * u))
       .setScale(cols > 1 ? Math.min(k, 0.55) : k);
 
     for (let i = 3; i < c.length; i++) {
