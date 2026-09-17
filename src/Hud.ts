@@ -107,6 +107,10 @@ export class Hud {
   private cueH = 40;
   /** brief 1: the tap cue that rides on the player until the first swipe */
   private finger!: Phaser.GameObjects.Container;
+  /** a tiny readout riding under the plane, so health reads without a glance up at the
+   *  run HUD mid-dodge */
+  private miniHp!: Phaser.GameObjects.Container;
+  private miniHpFill!: Phaser.GameObjects.Rectangle;
   /** brief 3: the ring drawn round the XP bar and the ability menu while they matter */
   private xpGlow!: Phaser.GameObjects.Graphics;
   private beat: Beat = 'intro';
@@ -203,7 +207,10 @@ export class Hud {
     bossBg.setStrokeStyle(3, 0xff6b6b);
     this.bossFill = s.add.rectangle(-128, 0, 256, 14, 0xff4438).setOrigin(0, 0.5);
     const bossName = this.mkText(18, 'BOSS', '#ff9a8f').setOrigin(0.5);
-    bossName.setPosition(0, -22);
+    // 28, not 22: at 22 the title's own bottom edge dipped into the bar's top edge - the
+    // two need to clear each other, not just the counters row above (see bossBar's own
+    // offset below).
+    bossName.setPosition(0, -28);
     this.bossBar = s.add.container(0, 0, [bossBg, this.bossFill, bossName]).setVisible(false);
     this.root.add(this.bossBar);
 
@@ -225,6 +232,12 @@ export class Hud {
     s.tweens.add({ targets: this.finger, x: '+=52', duration: 780, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     s.tweens.add({ targets: pad, scale: 1.5, alpha: 0, duration: 780, repeat: -1 });
 
+    // Same trough/fill colours as the run HUD's own HP bar, just small enough to sit
+    // under the plane without competing with it.
+    const miniHpBg = s.add.rectangle(0, 0, 44, 6, HUD.trough, 0.85).setOrigin(0.5);
+    this.miniHpFill = s.add.rectangle(-22, 0, 44, 6, HUD.hp).setOrigin(0, 0.5);
+    this.miniHp = s.add.container(0, 0, [miniHpBg, this.miniHpFill]).setScrollFactor(0).setDepth(D.overlay);
+
     // the beat's line of copy - above the level-up panel, since it explains it
     this.cueBg = s.add.graphics();
     // Phaser cannot measure a Graphics, so a Container holding one reports nonsense
@@ -238,6 +251,7 @@ export class Hud {
     this.pinScreen(this.root);
     this.pinScreen(this.intro);
     this.pinScreen(this.finger);
+    this.pinScreen(this.miniHp);
     this.pinScreen(this.cue);
   }
 
@@ -344,6 +358,17 @@ export class Hud {
     if (this.finger.visible) {
       const [px, py] = s.playerScreen();
       this.s.pinTo(this.finger, px - 26, py + 46);
+    }
+
+    // The mini bar only matters once the player is actually flying and can take a hit -
+    // hidden through the intro tap and once the run's over.
+    this.miniHp.setVisible(s.state === 'play' || s.state === 'levelup');
+    if (this.miniHp.visible) {
+      const [px, py] = s.playerScreen();
+      // ponytail: 62px clears the plane sprite by eye at the authored scale; recalibrate
+      // if the art changes size.
+      this.s.pinTo(this.miniHp, px, py + 62);
+      this.miniHpFill.width = 44 * Phaser.Math.Clamp(s.hp / s.maxHp, 0, 1);
     }
 
     // brief note 1: a countdown, red and blinking through its last seconds
@@ -686,14 +711,11 @@ export class Hud {
   }
 
   /** A store badge: the official artwork, drawn to a common height so the pair sits on
-   *  one line, and hit-tested over its own rectangle. Both badges do the same thing -
-   *  hand off to the network's install call. */
+   *  one line. Purely decorative - the whole end card is the tap target (see showEnd). */
   private makeStoreBadge(key: 'playstore' | 'appstore') {
     const s = this.s;
     const img = s.add.image(0, 0, key).setOrigin(0.5);
-    const hit = s.add.rectangle(0, 0, img.width, img.height, 0x000000, 0).setOrigin(0.5);
-    hit.setInteractive({ useHandCursor: true }).on('pointerdown', () => sdk.install());
-    return s.add.container(0, 0, [img, hit]);
+    return s.add.container(0, 0, [img]);
   }
 
   /** Top of the panel's own stack. The panel is a modal over a full-screen dim, sitting
@@ -874,20 +896,20 @@ export class Hud {
     // as a box sitting on the art, which is exactly what this must not look like.
     const shade = s.add.graphics();
 
-    // Both badges do the same thing: hand off to the network's own install call. The
-    // store is the network's to choose - a playable must never carry its own store URL.
+    // The badges, drawn only - the whole card is the CTA below.
     const google = this.makeStoreBadge('playstore');
     const apple = this.makeStoreBadge('appstore');
-    // Nested: the inner container carries the pulse, the outer one the layout scale. A
-    // tween writes an absolute scale, so pulsing the laid-out container throws its
-    // fitted size away and the badges run off the sides of a narrow screen.
-    const pulse = s.add.container(0, 0, [google, apple]);
-    const btn = s.add.container(0, 0, [pulse]);
-    s.tweens.add({ targets: pulse, scale: 1.04, duration: 760, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const btn = s.add.container(0, 0, [google, apple]);
 
-    c.add([backdrop, art, shade, btn]);
+    // The store is the network's to choose - a playable must never carry its own store
+    // URL - so the whole card hands off to the network's own install call, not just the
+    // badges themselves.
+    const hit = s.add.rectangle(0, 0, this.w, this.h, 0x000000, 0).setOrigin(0.5);
+    hit.setInteractive({ useHandCursor: true }).on('pointerdown', () => sdk.install());
+
+    c.add([backdrop, art, shade, hit, btn]);
     btn.setData('pair', [google, apple]);
-    c.setData('end', { backdrop, art, shade, btn });
+    c.setData('end', { backdrop, art, shade, btn, hit });
     this.overlay = c;
     this.pinScreen(c);
     c.setAlpha(0);
@@ -902,10 +924,12 @@ export class Hud {
           art: Phaser.GameObjects.Image;
           shade: Phaser.GameObjects.Graphics;
           btn: Phaser.GameObjects.Container;
+          hit: Phaser.GameObjects.Rectangle;
         }
       | undefined;
     if (!parts) return;
-    const { backdrop, art, shade, btn } = parts;
+    const { backdrop, art, shade, btn, hit } = parts;
+    hit.setPosition(this.w / 2, this.h / 2).setSize(this.w, this.h);
     const bsrc = backdrop.texture.getSourceImage() as { width: number; height: number };
     backdrop
       .setPosition(this.w / 2, this.h / 2)
@@ -943,8 +967,9 @@ export class Hud {
       shade.fillRect(0, this.h - band + (band * i) / slices, this.w, band / slices + 1);
     }
 
-    // Stacked in a column, centred on the wider of the two - the badges have different
-    // aspects, so they are matched on height rather than run to the same width.
+    // Side by side on one line - that is how a store lockup reads, and stacking them
+    // buries the art. The two badges have different aspects, so they are matched on
+    // height and the pair is centred on their combined width.
     const [google, apple] = btn.getData('pair') as Phaser.GameObjects.Container[];
     const gap = BADGE.gap * this.ui;
     const h = BADGE.h * this.ui;
@@ -952,20 +977,14 @@ export class Hud {
       const img = c.list[0] as Phaser.GameObjects.Image;
       const k = h / img.height;
       img.setScale(k);
-      (c.list[1] as Phaser.GameObjects.Rectangle).setScale(k);
       return img.width * k;
     });
-    const maxWidth = Math.max(...widths);
-    const totalH = h * 2 + gap;
-    google.setPosition(0, -totalH / 2 + h / 2);
-    apple.setPosition(0, totalH / 2 - h / 2);
-    // Anchored on the same bottom clearance the single-row layout used, measured off
-    // the lower badge rather than the pair's now-taller centre.
-    const margin = Math.max(46, this.h * 0.085);
+    const total = widths[0] + widths[1] + gap;
+    google.setPosition(-total / 2 + widths[0] / 2, 0);
+    apple.setPosition(total / 2 - widths[1] / 2, 0);
     btn
-      .setPosition(this.w / 2, this.h - margin - (totalH / 2 - h / 2))
-      // 1.04 of headroom for the pulse the inner container is running
-      .setScale(Math.min(1, (Math.min(this.w, artW) - 24) / (maxWidth * 1.04)));
+      .setPosition(this.w / 2, this.h - Math.max(46, this.h * 0.085))
+      .setScale(Math.min(1, (Math.min(this.w, artW) - 24) / total));
   }
 
   // ----------------------------------------------------------------- resize
@@ -997,7 +1016,10 @@ export class Hud {
     });
 
     this.loadout.setPosition(pad, height - 54 * u);
-    this.bossBar.setPosition(width / 2, statY + 42 * u).setScale(u);
+    // 58, not 50: the title now sits 28 above the bar's own centre (bumped from 22 to
+    // clear the bar itself), so the offset from the counters row needs the matching
+    // extra 6 to keep the title's top edge clear of the row too.
+    this.bossBar.setPosition(width / 2, statY + 58 * u).setScale(u);
 
     // Hints sit in the play area, clear of the run stats above them and of the card
     // stack below: a fixed fraction of the height puts them on the HUD on a short screen.

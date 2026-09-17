@@ -56,8 +56,12 @@ export class Game extends Phaser.Game {
   }
 
   public resize(width: number, height: number): void {
-    this.scale.resize(width * this.dpr, height * this.dpr);
+    // Before scale.resize(), not after: it recomputes the canvas's screen bounds against
+    // whatever the CSS box currently is, and on a rotation that box is still the old
+    // orientation's until fitCanvas corrects it - stale bounds is what read as the game
+    // not resizing (or input landing in the wrong place) until some later resize fixed it.
     this.fitCanvas(width, height);
+    this.scale.resize(width * this.dpr, height * this.dpr);
     this.main?.resize(width * this.dpr, height * this.dpr);
   }
 
