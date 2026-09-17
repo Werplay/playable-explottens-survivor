@@ -33,6 +33,9 @@ const ORIGIN = { dx: 0, dy: 0 };
 /** Spoke counts of the three sunburst layers; see startEvo. */
 const EVO_RAYS = [18, 24, 30];
 
+/** Virtual stick at ui 1. */
+const JOY = { base: 50, knob: 22 };
+
 const DEPTH = { bg: 0, pickup: 5, evo: 6, enemy: 10, player: 20, proj: 30, fx: 40 };
 
 /** Unity's y axis points up and its unit is CAM.pxPerUnit of this game's pixels. */
@@ -137,6 +140,8 @@ export class GameScene extends Phaser.Scene {
   private joyBase!: Phaser.GameObjects.Arc;
   private joyKnob!: Phaser.GameObjects.Arc;
   private joyPointer: number | null = null;
+  /** canvas scale, matched to the HUD's - see Hud.resize */
+  private uiScale = 1;
   private joyOrigin = new Phaser.Math.Vector2();
   private move = new Phaser.Math.Vector2();
   private vel = new Phaser.Math.Vector2();
@@ -318,10 +323,10 @@ export class GameScene extends Phaser.Scene {
     cam.setBounds(-far, -far, far * 2, far + worldY(BG.camFloor));
     cam.setBackgroundColor('#57bdf9');
 
-    // virtual joystick — appears wherever the finger lands
-    this.joyBase = this.add.circle(0, 0, 50, 0xffffff, 0.16).setScrollFactor(0).setDepth(90).setVisible(false);
+    // virtual joystick — appears wherever the finger lands, sized to the canvas
+    this.joyBase = this.add.circle(0, 0, JOY.base, 0xffffff, 0.16).setScrollFactor(0).setDepth(90).setVisible(false);
     this.joyBase.setStrokeStyle(4, 0xffffff, 0.5);
-    this.joyKnob = this.add.circle(0, 0, 22, 0xffffff, 0.55).setScrollFactor(0).setDepth(91).setVisible(false);
+    this.joyKnob = this.add.circle(0, 0, JOY.knob, 0xffffff, 0.55).setScrollFactor(0).setDepth(91).setVisible(false);
 
     this.input.addPointer(2);
     this.input.on('pointerdown', this.onDown, this);
@@ -354,9 +359,10 @@ export class GameScene extends Phaser.Scene {
   private onMove(p: Phaser.Input.Pointer) {
     if (p.id !== this.joyPointer) return;
     const d = new Phaser.Math.Vector2(p.x - this.joyOrigin.x, p.y - this.joyOrigin.y);
-    const len = Math.min(d.length(), 50);
+    const reach = JOY.base * this.uiScale;
+    const len = Math.min(d.length(), reach);
     if (d.length() > 0) d.normalize();
-    this.move.copy(d).scale(Math.min(len / 38, 1));
+    this.move.copy(d).scale(Math.min(len / (reach * 0.76), 1));
     this.pinTo(this.joyKnob, this.joyOrigin.x + d.x * len, this.joyOrigin.y + d.y * len);
   }
 
@@ -1491,6 +1497,10 @@ export class GameScene extends Phaser.Scene {
   // ---------------------------------------------------------------- resize
   public resize(width: number, height: number) {
     this.cameras.resize(width, height);
+    // the stick is a thumb-sized thing, so it follows the canvas the way the HUD does
+    this.uiScale = Phaser.Math.Clamp(Math.min(width, height) / 400, 0.7, 2.2);
+    this.joyBase?.setScale(this.uiScale);
+    this.joyKnob?.setScale(this.uiScale);
     // Match the game's field of view: CAM.units of world height, whatever the canvas is.
     this.cameras.main.setZoom(height / CAM.units / CAM.pxPerUnit);
     // The SDK resizes on its own schedule and can beat create() to the punch - loading
