@@ -6,6 +6,8 @@ import type { GameScene } from './GameScene';
 // The beat cue sits above the level-up panel: it is what tells the player what the
 // panel is for, so it cannot be behind the dim.
 const D = { hud: 100, overlay: 200, cue: 300 };
+/** How far a card that cannot be taken is faded back. */
+const LOCKED_ALPHA = 0.42;
 const GOLD = '#ffd34d';
 
 /** Colours read off the in-game "Select a Skill" panel. Weapons glow green, passives
@@ -346,33 +348,48 @@ export class Hud {
     const deal = () => {
       for (let i = c.length - 1; i >= 3; i--) c.getAt(i).destroy();
       s.rollChoices().forEach((choice, i) => {
-        const card = this.makeCard(choice.def, choice.level, () => {
-          if (c.getData('picked')) return;
-          c.setData('picked', true);
-          s.sfx('tap');
-          this.pickFlash(card, () => {
-            this.hush();
-            this.closeLevelUp();
-            s.closeLevelUp(choice.def.id);
-          });
-        });
+        // Brief 5 is a guided beat: the cursor points at the evo, so the evo is the only
+        // thing that answers. The other two are dealt for context, dimmed and dead.
+        const locked = this.beat === 'evo' && choice.def.id !== 'evo';
+        const card = this.makeCard(
+          choice.def,
+          choice.level,
+          locked
+            ? null
+            : () => {
+                if (c.getData('picked')) return;
+                c.setData('picked', true);
+                s.sfx('tap');
+                this.pickFlash(card, () => {
+                  this.hush();
+                  this.closeLevelUp();
+                  s.closeLevelUp(choice.def.id);
+                });
+              }
+        );
         card.setData('index', i).setAlpha(0);
         c.add(card);
-        s.tweens.add({ targets: card, alpha: 1, duration: 200, delay: 60 * i });
+        s.tweens.add({ targets: card, alpha: locked ? LOCKED_ALPHA : 1, duration: 200, delay: 60 * i });
         // brief 5: "Animated cursor points to evo weapon" - the evo is always dealt first
-        if (this.beat === 'evo' && i === 0) card.add(this.makeCursor());
+        if (this.beat === 'evo' && choice.def.id === 'evo') card.add(this.makeCursor());
       });
       c.setData('picked', false);
       pin(c);
       this.relayout?.();
     };
 
-    (refresh.getAt(0) as Phaser.GameObjects.Rectangle)
-      .setInteractive({ useHandCursor: true })
-      .on('pointerdown', () => {
-        s.sfx('tap');
-        deal();
-      });
+    // Refresh is dead on the evo beat too - rerolling is a tap that leads nowhere when
+    // the evo is the only answer, and it would just re-deal two more locked cards.
+    const canRefresh = this.beat !== 'evo';
+    refresh.setAlpha(canRefresh ? 1 : LOCKED_ALPHA);
+    if (canRefresh) {
+      (refresh.getAt(0) as Phaser.GameObjects.Rectangle)
+        .setInteractive({ useHandCursor: true })
+        .on('pointerdown', () => {
+          s.sfx('tap');
+          deal();
+        });
+    }
 
     this.overlay = c;
     this.relayout = () => this.layoutOverlay(header, refresh);
@@ -441,7 +458,7 @@ export class Hud {
   }
 
   /** One full-width skill row: glow border, tinted wedge, framed icon, rarity pips. */
-  private makeCard(def: SkillDef, level: number, onPick: () => void) {
+  private makeCard(def: SkillDef, level: number, onPick: (() => void) | null) {
     const s = this.s;
     const w = CARD.w;
     const h = CARD.h;
@@ -511,7 +528,7 @@ export class Hud {
       .setOrigin(1, 0);
 
     const hit = s.add.rectangle(0, 0, w, h, 0x000000, 0).setOrigin(0.5);
-    hit.setInteractive({ useHandCursor: true }).on('pointerdown', onPick);
+    if (onPick) hit.setInteractive({ useHandCursor: true }).on('pointerdown', onPick);
 
     return s.add.container(0, 0, [g, wedge, frame, icon, pips, title, desc, badge, hit]);
   }

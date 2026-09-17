@@ -34,7 +34,7 @@ to the CTA: no cuts, no reloads.
 | 2 | Combat loop | auto-attack, health bar, gems on every kill, and the **Attack → Loot → Upgrade** panel tracking the beat; loot boxes sparkle and burst when shot | `BEATS.combat`, `Hud.onBeat`, `GameScene.updateCrates` |
 | 3 | Single attack weapon | "Collect gems!" with the XP bar and the ability menu ringed while it is up | `BEATS.combat.text`, `Hud.update` |
 | 4 | Weapon upgrade | "Upgrade your weapon to deal more damage!" over three weapons; the pick flashes, sparks and glows, and lands on a power-up cue | `BEATS.upgrade`, `Hud.pickFlash` |
-| 5 | Evo upgrade | "Evolve your weapon for unstoppable power!"; the evo is dealt first with an animated cursor on it, and taking it drops the horde and the berserk sting | `BEATS.evo`, `Hud.makeCursor`, `GameScene.startEvo` |
+| 5 | Evo upgrade | "Evolve your weapon for unstoppable power!"; the evo is dealt first with an animated cursor on it and is the **only** card that answers — the other two and Refresh are dimmed and dead — and taking it drops the horde and the berserk sting | `BEATS.evo`, `Hud.makeCursor`, `LOCKED_ALPHA` |
 | 6 | Evo attack | "Unleash your evolved attacks!" over the mini-boss wave, the spray auto-targeting, loot scattering as it dies | `BEATS.evoAttack`, `GameScene.startMiniBossWave` |
 | 7 | Win | wave cleared, confetti, a green **WIN** stamp and "Victory! Your hero is unstoppable!", then the end card: app logo and **PLAY NOW** | `BEATS.win`, `Hud.showVictory` |
 
