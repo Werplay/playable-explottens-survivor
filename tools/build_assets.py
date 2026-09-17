@@ -256,9 +256,37 @@ for src, name, w in [('Rocks1', 'rock1', 384), ('Rocks3', 'rock2', 300), ('Rocks
 flat('/BG/BGDataOld/OtheBackgrounds/BG- Misc/horizon.png', 'horizon.png', 217, 0)
 flat('/BG/BGDataNew/BGAssets/BGWaterFall/WaterfallBackground/Assets/Foam_BaseComplete.png', 'foam.png', 512, 32)
 
-put(Image.open(U + '/iTunesArtwork@2x.png').convert('RGBA').resize((140, 140), Image.LANCZOS), 'appicon.png', 96)
 
-for stale in ('coin.png', 'magnet.png', 'chest.png'):
+# ---- end card key art ---------------------------------------------------
+# The one asset here that is not from the Unity project: the brief's own attached
+# screenshot, which is what the end card is supposed to look like. It lives as a single
+# RGB image XObject in the PDF. JPEG, not PNG - it is a painted illustration full of
+# gradients, where PNG costs about four times as much for the same thing.
+import zlib as _zlib
+BRIEF = os.path.join(os.path.dirname(OUT), 'Playable Ad Brief_ Explottens Survivor-1.pdf')
+if os.path.exists(BRIEF):
+    pdf = open(BRIEF, 'rb').read()
+    m = re.search(rb'(\d+)\s+0\s+obj\b(.{0,1200}?)/Subtype\s*/Image(.{0,1200}?)stream\r?\n', pdf, re.S)
+    hdr = (m.group(2) + m.group(3)) if m else b''
+    iw = int(re.search(rb'/Width\s+(\d+)', hdr).group(1))
+    ih = int(re.search(rb'/Height\s+(\d+)', hdr).group(1))
+    art = Image.frombytes('RGB', (iw, ih), _zlib.decompress(pdf[m.end():pdf.find(b'endstream', m.end())]))
+    cw = 540  # 1x on a phone, a little soft on a large tablet, half the bytes of 2x
+    art = art.resize((cw, round(art.height * cw / art.width)), Image.LANCZOS)
+    p = os.path.join(OUT, 'endcard.jpg')
+    art.save(p, 'JPEG', quality=72, optimize=True, progressive=True)
+    sizes['endcard.jpg'] = os.path.getsize(p)
+    # A 40px copy, scaled back up at runtime: that upscale *is* the blur, and it fills
+    # the margins on a landscape screen where portrait key art cannot cover the card.
+    p = os.path.join(OUT, 'endcard_bg.jpg')
+    art.resize((40, round(art.height * 40 / art.width)), Image.LANCZOS).save(
+        p, 'JPEG', quality=80, optimize=True)
+    sizes['endcard_bg.jpg'] = os.path.getsize(p)
+else:
+    print('%-12s SKIPPED - brief PDF not alongside the project' % 'endcard')
+
+# appicon went with the old end card: the brief's key art carries the lockup itself.
+for stale in ('coin.png', 'magnet.png', 'chest.png', 'appicon.png'):
     p = os.path.join(OUT, stale)
     if os.path.exists(p): os.remove(p)
 
